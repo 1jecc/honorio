@@ -20,7 +20,7 @@
 <body>
 
     <h1>SIASE - Registro de Asistencia AFI</h1>
-    <div id="nombreEvento">Cargando evento activo y GPS...</div>
+    <div id="nombreEvento">Solicitando ubicación GPS y conectando...</div>
     <p>Escanea el código QR desde tu dispositivo móvil para validar tu presencia.</p>
 
     <div class="container">
@@ -42,90 +42,84 @@
         
         let qrcode = new QRCode(qrContainer, { width: 280, height: 280 });
         let timeLeft = 15;
+        let eventoActualId = null;
         let eventoActualClave = "EVENTO_DEFAULT";
-        
-        // Variables globales para la posición del profesor
-        let profesorLat = null;
-        let profesorLon = null;
 
-        // 1. Obtener el evento activo desde la base de datos de Supabase
-        async function obtenerEventoActivo() {
+        // 1. Obtener el evento activo desde Supabase y actualizar su ubicación GPS automáticamente
+        async function iniciarSistema() {
             try {
+                // Obtener evento activo
                 const { data, error } = await supabaseClient
                     .from('eventos')
                     .select('*')
                     .eq('activo', true)
                     .single();
 
-                if (data) {
-                    nombreEventoEl.textContent = data.nombre;
-                    eventoActualClave = data.clave_evento;
-                } else {
+                if (error || !data) {
                     nombreEventoEl.textContent = "No hay eventos activos en este momento";
+                    return;
                 }
+
+                eventoActualId = data.id;
+                eventoActualClave = data.clave_evento;
+                nombreEventoEl.textContent = data.nombre;
+
+                // 2. Pedir geolocalización al profesor y guardarla en Supabase
+                if (!navigator.geolocation) {
+                    msgGpsEl.textContent = "Tu navegador no soporta geolocalización.";
+                    return;
+                }
+
+                navigator.geolocation.getCurrentPosition(async (position) => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+
+                    // 💡 AQUÍ SE MANDAN LOS DATOS A SUPABASE AUTOMÁTICAMENTE
+                    const { error: updateError } = await supabaseClient
+                        .from('eventos')
+                        .update({ lat: lat, lon: lon })
+                        .eq('id', eventoActualId);
+
+                    if (updateError) {
+                        console.error("Error al actualizar lat/lon en Supabase:", updateError.message);
+                        msgGpsEl.textContent = "Error al guardar la ubicación en la base de datos.";
+                        return;
+                    }
+
+                    console.log("Ubicación del profesor guardada en Supabase:", lat, lon);
+                    msgGpsEl.textContent = ""; // Todo OK
+
+                    // Iniciar generación de QR
+                    actualizarQR();
+
+                    // Refrescar el QR cada 15 segundos
+                    setInterval(() => {
+                        timeLeft--;
+                        countdownEl.textContent = timeLeft;
+                        if (timeLeft <= 0) {
+                            actualizarQR();
+                        }
+                    }, 1000);
+
+                }, (error) => {
+                    msgGpsEl.textContent = "⚠️ Debes permitir el acceso a tu ubicación GPS para iniciar el pase de lista.";
+                }, { enableHighAccuracy: true, timeout: 10000 });
+
             } catch (err) {
-                console.error("Error al conectar con Supabase:", err);
+                console.error("Error general:", err);
                 nombreEventoEl.textContent = "Error de conexión con la base de datos";
             }
         }
 
-        // 2. Obtener automáticamente la ubicación GPS del profesor
-        function obtenerUbicacionProfesor() {
-            return new Promise((resolve, reject) => {
-                if (!navigator.geolocation) {
-                    msgGpsEl.textContent = "Tu navegador no soporta geolocalización.";
-                    reject("Sin soporte GPS");
-                    return;
-                }
-
-                navigator.geolocation.getCurrentPosition((position) => {
-                    profesorLat = position.coords.latitude;
-                    profesorLon = position.coords.longitude;
-                    msgGpsEl.textContent = ""; // Limpiar error si todo va bien
-                    resolve();
-                }, (error) => {
-                    msgGpsEl.textContent = "⚠️ Debes permitir el acceso a tu ubicación GPS para generar el QR de asistencia.";
-                    reject(error);
-                }, { enableHighAccuracy: true, timeout: 10000 });
-            });
-        }
-
         function actualizarQR() {
-            if (profesorLat === null || profesorLon === null) return;
-
             const tiempoBloque = Math.floor(Date.now() / 15000);
-            
-            // El token incluye la clave dinámica del evento
             const token = eventoActualClave + "_" + tiempoBloque;
             
-            // 💡 AQUÍ SE INYECTAN AUTOMÁTICAMENTE LAS COORDENADAS DEL PROFESOR EN EL ENLACE DEL QR
-            const urlEstudiante = `https://1jecc.github.io/honorio/asistencia.html?token=${token}&lat=${profesorLat}&lon=${profesorLon}`;
+            // El QR solo lleva el token limpio; el alumno consultará la ubicación directo de Supabase
+            const urlEstudiante = "https://1jecc.github.io/honorio/asistencia.html?token=" + token;
             
             qrcode.makeCode(urlEstudiante);
             timeLeft = 15;
-        }
-
-        // Inicialización
-        async function iniciarSistema() {
-            await obtenerEventoActivo();
-            
-            try {
-                // Esperar a obtener la ubicación del profesor antes de mostrar el primer QR
-                await obtenerUbicacionProfesor();
-                actualizarQR();
-
-                // Refrescar el QR cada 15 segundos
-                setInterval(() => {
-                    timeLeft--;
-                    countdownEl.textContent = timeLeft;
-                    if (timeLeft <= 0) {
-                        actualizarQR();
-                    }
-                }, 1000);
-
-            } catch (e) {
-                console.error("No se pudo iniciar el sistema de ubicación:", e);
-            }
         }
 
         iniciarSistema();
