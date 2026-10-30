@@ -29,16 +29,11 @@
 </div>
 
 <script>
-    // Configuración de Supabase (las mismas credenciales que usaste en el expositor)
+    // Configuración de Supabase
     const SUPABASE_URL = 'https://phodrnfzvxowxhewhbbq.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBob2RybmZ6dnhvd3hoZXdoYmJxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MzM3MTcyNywiZXhwIjoyMTA4OTQ3NzI3fQ.usSIHWjncmGDNu6COe9Vo0kL3x_vsQfBGhDEqC7LJQg'; // La obtienes en la sección de API de Supabase
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBob2RybmZ6dnhvd3hoZXdoYmJxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MzM3MTcyNywiZXhwIjoyMTA4OTQ3NzI3fQ.usSIHWjncmGDNu6COe9Vo0kL3x_vsQfBGhDEqC7LJQg'; 
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // 1. Validar si ESTE DISPOSITIVO ya registró asistencia previamente
-    const dispositivoRegistrado = localStorage.getItem("dispositivo_ya_registrado");
-    const matriculaAnterior = localStorage.getItem("matricula_registrada");
-
-    // Obtener el token recibido por la URL (?token=...)
     const urlParams = new URLSearchParams(window.location.search);
     const tokenRecibido = urlParams.get('token');
     
@@ -51,64 +46,58 @@
             return;
         }
 
-        // Consultar a Supabase si este dispositivo ya registró algo en este evento
-        // (Podemos almacenar un identificador único en una cookie que no se borre tan fácil o validar por IP/Dispositivo)
-        const dispositivoLocalID = localStorage.getItem("dispositivo_seguro_id") || ('DEV_' + Math.random().toString(36).substring(2));
-        localStorage.setItem("dispositivo_seguro_id", dispositivoLocalID);
-
-        // Revisar en la base de datos si este dispositivo_id ya registró asistencia hoy
-        const { data: registroPrevio, error: errPrevio } = await supabaseClient
-            .from('asistencias')
-            .select('matricula')
-            .eq('dispositivo_id', dispositivoLocalID)
-            .maybeSingle();
-
-        if (registroPrevio) {
-            mostrarError(`Este dispositivo ya registró la matrícula ${registroPrevio.matricula}. Bloqueo por seguridad anti-fraude.`);
-            return;
+        // Obtener o crear un identificador de dispositivo persistente
+        let dispositivoLocalID = localStorage.getItem("dispositivo_seguro_id");
+        if (!dispositivoLocalID) {
+            dispositivoLocalID = 'DEV_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+            localStorage.setItem("dispositivo_seguro_id", dispositivoLocalID);
         }
 
-        const ultimoGuion = tokenRecibido.lastIndexOf('_');
-        const bloqueRemoto = parseInt(tokenRecibido.substring(ultimoGuion + 1));
-        const bloqueActual = Math.floor(Date.now() / 15000);
+        try {
+            // Extraer la clave del evento del token (Ej: EVENTO_FACPYA_01_119557974)
+            const ultimoGuion = tokenRecibido.lastIndexOf('_');
+            const claveEvento = tokenRecibido.substring(0, ultimoGuion);
+            const bloqueRemoto = parseInt(tokenRecibido.substring(ultimoGuion + 1));
+            const bloqueActual = Math.floor(Date.now() / 15000);
 
-        if (Math.abs(bloqueActual - bloqueRemoto) <= 1) {
-            mensajeEl.innerHTML = "<p class='success'>¡Código de sesión válido!</p>";
-            formEl.style.display = 'block';
-        } else {
-            mostrarError("El código QR ha expirado (captura de pantalla o reenvío detectado). Escanea el código en vivo.");
-        }
-    }
-        // Bloqueo estricto por dispositivo (localStorage)
-        if (dispositivoRegistrado) {
-            mostrarError(`Este dispositivo ya registró la matrícula ${matriculaAnterior}. Solo se permite un registro por celular.`);
-            return;
-        }
-
-        if (!tokenRecibido) {
-            mostrarError("Enlace inválido. No se detectó token de asistencia.");
-            return;
-        }
-
-        // Extraer la clave del evento y el bloque de tiempo del token recibido (Ej: AFI_EVENTO1_119557974)
-        const ultimoGuion = tokenRecibido.lastIndexOf('_');
-        const claveEventoClave = tokenRecibido.substring(0, ultimoGuion);
-        const bloqueRemoto = parseInt(tokenRecibido.substring(ultimoGuion + 1));
-        const bloqueActual = Math.floor(Date.now() / 15000);
-
-        // Permitir un margen de tolerancia de 1 bloque (por retardo de red)
-        if (Math.abs(bloqueActual - bloqueRemoto) <= 1) {
-            
-            // Verificar si este token específico ya fue utilizado localmente
-            if (localStorage.getItem("token_usado_" + tokenRecibido)) {
-                mostrarError("Este código QR ya fue utilizado previamente. Por favor escanea el código actual en la pantalla.");
+            // 1. Validar expiración del tiempo del QR (tolerancia de 1 bloque)
+            if (Math.abs(bloqueActual - bloqueRemoto) > 1) {
+                mostrarError("El código QR ha expirado (captura de pantalla o reenvío detectado). Escanea el código en vivo.");
                 return;
             }
 
+            // 2. Buscar el ID del evento en Supabase
+            const { data: eventoData, error: eventoError } = await supabaseClient
+                .from('eventos')
+                .select('id')
+                .eq('clave_evento', claveEvento)
+                .single();
+
+            if (eventoError || !eventoData) {
+                mostrarError("El evento asociado al código QR no es válido o ya finalizó.");
+                return;
+            }
+
+            // 3. Validar en Supabase si ESTE DISPOSITIVO ya registró asistencia en este evento
+            const { data: registroDispositivo, error: errDisp } = await supabaseClient
+                .from('asistencias')
+                .select('matricula')
+                .eq('evento_id', eventoData.id)
+                .eq('dispositivo_id', dispositivoLocalID)
+                .maybeSingle();
+
+            if (registroDispositivo) {
+                mostrarError(`Este dispositivo ya registró la matrícula ${registroDispositivo.matricula}. Bloqueo anti-fraude activo.`);
+                return;
+            }
+
+            // Si pasa todas las validaciones, mostrar formulario
             mensajeEl.innerHTML = "<p class='success'>¡Código de sesión válido!</p>";
             formEl.style.display = 'block';
-        } else {
-            mostrarError("El código QR ha expirado (captura de pantalla o reenvío detectado). Escanea el código en vivo.");
+
+        } catch (err) {
+            console.error(err);
+            mostrarError("Error al validar el acceso con la base de datos.");
         }
     }
 
@@ -125,22 +114,17 @@
         btnEnviar.textContent = "Registrando...";
 
         try {
-            // Extraer la clave del evento del token
             const ultimoGuion = tokenRecibido.lastIndexOf('_');
             const claveEvento = tokenRecibido.substring(0, ultimoGuion);
+            const dispositivoLocalID = localStorage.getItem("dispositivo_seguro_id");
 
-            // 1. Buscar el ID del evento actual en Supabase usando la clave
-            const { data: eventoData, error: eventoError } = await supabaseClient
+            const { data: eventoData } = await supabaseClient
                 .from('eventos')
                 .select('id')
                 .eq('clave_evento', claveEvento)
                 .single();
 
-            if (eventoError || !eventoData) {
-                throw new Error("No se encontró el evento activo en la base de datos.");
-            }
-
-            // 2. Insertar la asistencia directamente en la tabla asistencias de Supabase
+            // Insertar en Supabase
             const { error: insertError } = await supabaseClient
                 .from('asistencias')
                 .insert([
@@ -148,22 +132,17 @@
                         evento_id: eventoData.id,
                         matricula: matricula,
                         token_usado: tokenRecibido,
-                        dispositivo_id: 'WEB_' + Math.random().toString(36).substring(2),                    }
+                        dispositivo_id: dispositivoLocalID
+                    }
                 ]);
 
             if (insertError) {
-                // Si la base de datos detecta duplicidad o error
                 if (insertError.code === '23505') {
-                    throw new Error("Esta matrícula ya cuenta con asistencia registrada para este evento.");
+                    throw new Error("Esta matrícula o dispositivo ya cuenta con asistencia registrada.");
                 } else {
                     throw new Error(insertError.message);
                 }
             }
-
-            // Bloquear el dispositivo localmente para que no registre más
-            localStorage.setItem("dispositivo_ya_registrado", "true");
-            localStorage.setItem("matricula_registrada", matricula);
-            localStorage.setItem("token_usado_" + tokenRecibido, "true");
 
             mensajeEl.innerHTML = `<p class='success'>¡Asistencia registrada con éxito para la matrícula ${matricula}!</p>`;
             formEl.style.display = 'none';
@@ -175,6 +154,7 @@
         }
     }
 
+    // Ejecutar validación al cargar
     validarToken();
 </script>
 
