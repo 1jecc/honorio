@@ -40,31 +40,67 @@
     const mensajeEl = document.getElementById('mensaje');
     const formEl = document.getElementById('formAsistencia');
 
-    // Función para generar una huella digital única e inalterable del hardware del celular
+    // Función avanzada para generar una huella única basada en WebGL y AudioContext
     async function obtenerHuellaDispositivo() {
         try {
+            // 1. WebGL GPU Info
             const canvas = document.createElement('canvas');
             const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
             const debugInfo = gl ? gl.getExtension('WEBGL_debug_renderer_info') : null;
             const gpu = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'unknown';
 
+            // 2. AudioContext Fingerprint (Distingue dispositivos idénticos por su chip de audio)
+            let audioHash = "no-audio";
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const analyser = audioCtx.createAnalyser();
+                const gainNode = audioCtx.createGain();
+                const scriptProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
+
+                oscillator.type = 'triangle';
+                oscillator.frequency.value = 10000;
+                
+                scriptProcessor.onaudioprocess = function (e) {
+                    const output = e.inputBuffer.getChannelData(0);
+                    let sum = 0;
+                    for (let i = 0; i < output.length; i++) {
+                        sum += Math.abs(output[i]);
+                    }
+                    audioHash = sum.toString();
+                    oscillator.stop();
+                    audioCtx.close();
+                };
+
+                oscillator.connect(gainNode);
+                gainNode.connect(analyser);
+                analyser.connect(scriptProcessor);
+                scriptProcessor.connect(audioCtx.destination);
+                oscillator.start(0);
+            } catch (err) {
+                audioHash = "audio-blocked";
+            }
+
+            // 3. Consolidar variables únicas de hardware
             const datosHardware = [
                 navigator.userAgent,
                 navigator.language,
                 screen.width + 'x' + screen.height,
                 screen.colorDepth,
                 new Date().getTimezoneOffset(),
-                gpu
-            ].join('###');
+                gpu,
+                audioHash
+            ].join('|||');
 
+            // Generar Hash SHA-256 seguro
             const encoder = new TextEncoder();
             const data = encoder.encode(datosHardware);
             const hashBuffer = await crypto.subtle.digest('SHA-256', data);
             const hashArray = Array.from(new Uint8Array(hashBuffer));
             return 'FP_' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
+
         } catch (e) {
-            // Plan B en caso de restricciones extremas en el navegador móvil
-            return 'FP_FALLBACK_' + screen.width + 'x' + screen.height + '_' + navigator.language;
+            return 'FP_FALLBACK_' + screen.width + 'x' + screen.height + '_' + Math.random();
         }
     }
 
