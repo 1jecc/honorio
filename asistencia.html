@@ -19,7 +19,7 @@
 
 <div class="card" id="app">
     <h2>Registro AFI - UANL</h2>
-    <div id="mensaje">Generando huella del dispositivo y validando QR...</div>
+    <div id="mensaje">Verificando ubicación y generando huella del dispositivo...</div>
 
     <form id="formAsistencia" style="display: none;" onsubmit="registrarAsistencia(event)">
         <label for="matricula">Ingresa tu Matrícula:</label>
@@ -40,16 +40,31 @@
     const mensajeEl = document.getElementById('mensaje');
     const formEl = document.getElementById('formAsistencia');
 
+    // COORDENADAS DEL RECINTO / AUDITORIO (Ajusta aquí la latitud y longitud exactas del evento)
+    const EVENTO_LAT = 25.7258; 
+    const EVENTO_LON = -100.3121;
+    const RADIO_METROS_PERMITIDO = 70; // 70 metros ideal para auditorios grandes sin falsos positivos por GPS
+
+    // Fórmula de Haversine para calcular la distancia en metros entre el GPS del alumno y el evento
+    function calcularDistanciaMetros(lat1, lon1, lat2, lon2) {
+        const R = 6371e3;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                  Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c;
+    }
+
     // Función avanzada para generar una huella única basada en WebGL y AudioContext
     async function obtenerHuellaDispositivo() {
         try {
-            // 1. WebGL GPU Info
             const canvas = document.createElement('canvas');
             const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
             const debugInfo = gl ? gl.getExtension('WEBGL_debug_renderer_info') : null;
             const gpu = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'unknown';
 
-            // 2. AudioContext Fingerprint (Distingue dispositivos idénticos por su chip de audio)
             let audioHash = "no-audio";
             try {
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -81,7 +96,6 @@
                 audioHash = "audio-blocked";
             }
 
-            // 3. Consolidar variables únicas de hardware
             const datosHardware = [
                 navigator.userAgent,
                 navigator.language,
@@ -92,7 +106,6 @@
                 audioHash
             ].join('|||');
 
-            // Generar Hash SHA-256 seguro
             const encoder = new TextEncoder();
             const data = encoder.encode(datosHardware);
             const hashBuffer = await crypto.subtle.digest('SHA-256', data);
@@ -104,29 +117,50 @@
         }
     }
 
-    async function validarToken() {
+    // Validación inicial que combina GPS y Token
+    async function validarTokenYUbicacion() {
         if (!tokenRecibido) {
             mostrarError("Enlace inválido. No se detectó token de asistencia.");
             return;
         }
 
+        if (!navigator.geolocation) {
+            mostrarError("Tu navegador no soporta geolocalización, la cual es obligatoria para validar asistencia.");
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(async (position) => {
+            const usuarioLat = position.coords.latitude;
+            const usuarioLon = position.coords.longitude;
+            const distancia = calcularDistanciaMetros(usuarioLat, usuarioLon, EVENTO_LAT, EVENTO_LON);
+
+            if (distancia > RADIO_METROS_PERMITIDO) {
+                mostrarError(`Acceso denegado: Estás fuera del área del evento (a ${Math.round(distancia)} metros). Debes estar presente en el auditorio.`);
+                return;
+            }
+
+            // Si pasa el filtro de ubicación, procedemos a validar el token y el dispositivo
+            continuarValidacionQR();
+
+        }, (error) => {
+            mostrarError("Debes permitir el acceso a tu ubicación GPS para confirmar tu presencia en el evento.");
+        }, { enableHighAccuracy: true, timeout: 10000 });
+    }
+
+    async function continuarValidacionQR() {
         try {
-            // Generar la huella digital del dispositivo actual
             const dispositivoFingerprint = await obtenerHuellaDispositivo();
 
-            // Extraer la clave del evento del token
             const ultimoGuion = tokenRecibido.lastIndexOf('_');
             const claveEvento = tokenRecibido.substring(0, ultimoGuion);
             const bloqueRemoto = parseInt(tokenRecibido.substring(ultimoGuion + 1));
             const bloqueActual = Math.floor(Date.now() / 15000);
 
-            // 1. Validar expiración del tiempo del QR (tolerancia de 1 bloque)
             if (Math.abs(bloqueActual - bloqueRemoto) > 1) {
                 mostrarError("El código QR ha expirado (captura de pantalla o reenvío detectado). Escanea el código en vivo.");
                 return;
             }
 
-            // 2. Buscar el ID del evento en Supabase
             const { data: eventoData, error: eventoError } = await supabaseClient
                 .from('eventos')
                 .select('id')
@@ -138,7 +172,6 @@
                 return;
             }
 
-            // 3. Validar en Supabase si ESTE HARDWARE ya registró asistencia en este evento
             const { data: registroDispositivo } = await supabaseClient
                 .from('asistencias')
                 .select('matricula')
@@ -151,11 +184,8 @@
                 return;
             }
 
-            // Guardar temporalmente en memoria la huella para usarla al registrar
             window.currentDeviceFP = dispositivoFingerprint;
-
-            // Si pasa todas las validaciones, mostrar formulario
-            mensajeEl.innerHTML = "<p class='success'>¡Código de sesión válido!</p>";
+            mensajeEl.innerHTML = "<p class='success'>¡Ubicación y código de sesión válidos!</p>";
             formEl.style.display = 'block';
 
         } catch (err) {
@@ -187,7 +217,6 @@
                 .eq('clave_evento', claveEvento)
                 .single();
 
-            // Insertar en Supabase
             const { error: insertError } = await supabaseClient
                 .from('asistencias')
                 .insert([
@@ -217,8 +246,8 @@
         }
     }
 
-    // Ejecutar validación al cargar
-    validarToken();
+    // Ejecutar validación de ubicación y token al cargar la página
+    validarTokenYUbicacion();
 </script>
 
 </body>
