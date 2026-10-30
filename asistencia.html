@@ -19,7 +19,7 @@
 
 <div class="card" id="app">
     <h2>Registro AFI - UANL</h2>
-    <div id="mensaje">Verificando ubicación y generando huella del dispositivo...</div>
+    <div id="mensaje">Verificando ubicación precisa y huella del dispositivo...</div>
 
     <form id="formAsistencia" style="display: none;" onsubmit="registrarAsistencia(event)">
         <label for="matricula">Ingresa tu Matrícula:</label>
@@ -43,9 +43,9 @@
     // COORDENADAS DEL RECINTO / AUDITORIO (Ajusta aquí la latitud y longitud exactas del evento)
     const EVENTO_LAT = 25.7258; 
     const EVENTO_LON = -100.3121;
-    const RADIO_METROS_PERMITIDO = 70; // 70 metros ideal para auditorios grandes sin falsos positivos por GPS
+    const RADIO_METROS_PERMITIDO = 70; // Radio de distancia permitido una vez validada la precisión
 
-    // Fórmula de Haversine para calcular la distancia en metros entre el GPS del alumno y el evento
+    // Fórmula de Haversine para calcular la distancia en metros
     function calcularDistanciaMetros(lat1, lon1, lat2, lon2) {
         const R = 6371e3;
         const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -117,7 +117,7 @@
         }
     }
 
-    // Validación inicial que combina GPS y Token
+    // Validación estricta que exige GPS Preciso
     async function validarTokenYUbicacion() {
         if (!tokenRecibido) {
             mostrarError("Enlace inválido. No se detectó token de asistencia.");
@@ -132,6 +132,15 @@
         navigator.geolocation.getCurrentPosition(async (position) => {
             const usuarioLat = position.coords.latitude;
             const usuarioLon = position.coords.longitude;
+            const precisionMetros = position.coords.accuracy; // Margen de error reportado por el teléfono
+
+            // CANDADO DE PRECISIÓN: Si el margen de error es mayor a 100 metros, seleccionaron "Aproximada"
+            if (precisionMetros > 100) {
+                mostrarError(`Ubicación demasiado imprecisa (Margen de error: ${Math.round(precisionMetros)}m). Por favor, cambia la configuración de tu teléfono a ubicación **Precisa** y vuelve a escanear el QR.`);
+                return;
+            }
+
+            // Validar distancia real al evento
             const distancia = calcularDistanciaMetros(usuarioLat, usuarioLon, EVENTO_LAT, EVENTO_LON);
 
             if (distancia > RADIO_METROS_PERMITIDO) {
@@ -139,12 +148,16 @@
                 return;
             }
 
-            // Si pasa el filtro de ubicación, procedemos a validar el token y el dispositivo
+            // Si pasa el filtro de precisión y ubicación, procedemos con el token y hardware
             continuarValidacionQR();
 
         }, (error) => {
-            mostrarError("Debes permitir el acceso a tu ubicación GPS para confirmar tu presencia en el evento.");
-        }, { enableHighAccuracy: true, timeout: 10000 });
+            mostrarError("Debes permitir el acceso a tu ubicación **Precisa** para confirmar tu presencia en el evento.");
+        }, { 
+            enableHighAccuracy: true, // Forzar uso del chip GPS real
+            timeout: 10000, 
+            maximumAge: 0 // No usar ubicaciones guardadas en caché
+        });
     }
 
     async function continuarValidacionQR() {
@@ -185,7 +198,7 @@
             }
 
             window.currentDeviceFP = dispositivoFingerprint;
-            mensajeEl.innerHTML = "<p class='success'>¡Ubicación y código de sesión válidos!</p>";
+            mensajeEl.innerHTML = "<p class='success'>¡Ubicación precisa y código de sesión válidos!</p>";
             formEl.style.display = 'block';
 
         } catch (err) {
@@ -246,7 +259,7 @@
         }
     }
 
-    // Ejecutar validación de ubicación y token al cargar la página
+    // Ejecutar validación estricta al cargar
     validarTokenYUbicacion();
 </script>
 
