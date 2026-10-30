@@ -19,7 +19,7 @@
 
 <div class="card" id="app">
     <h2>Registro AFI - UANL</h2>
-    <div id="mensaje">Validando código QR...</div>
+    <div id="mensaje">Generando huella del dispositivo y validando QR...</div>
 
     <form id="formAsistencia" style="display: none;" onsubmit="registrarAsistencia(event)">
         <label for="matricula">Ingresa tu Matrícula:</label>
@@ -40,21 +40,45 @@
     const mensajeEl = document.getElementById('mensaje');
     const formEl = document.getElementById('formAsistencia');
 
+    // Función para generar una huella digital única e inalterable del hardware del celular
+    async function obtenerHuellaDispositivo() {
+        try {
+            const canvas = document.createElement('canvas');
+            const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+            const debugInfo = gl ? gl.getExtension('WEBGL_debug_renderer_info') : null;
+            const gpu = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'unknown';
+
+            const datosHardware = [
+                navigator.userAgent,
+                navigator.language,
+                screen.width + 'x' + screen.height,
+                screen.colorDepth,
+                new Date().getTimezoneOffset(),
+                gpu
+            ].join('###');
+
+            const encoder = new TextEncoder();
+            const data = encoder.encode(datosHardware);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return 'FP_' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
+        } catch (e) {
+            // Plan B en caso de restricciones extremas en el navegador móvil
+            return 'FP_FALLBACK_' + screen.width + 'x' + screen.height + '_' + navigator.language;
+        }
+    }
+
     async function validarToken() {
         if (!tokenRecibido) {
             mostrarError("Enlace inválido. No se detectó token de asistencia.");
             return;
         }
 
-        // Obtener o crear un identificador de dispositivo persistente
-        let dispositivoLocalID = localStorage.getItem("dispositivo_seguro_id");
-        if (!dispositivoLocalID) {
-            dispositivoLocalID = 'DEV_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
-            localStorage.setItem("dispositivo_seguro_id", dispositivoLocalID);
-        }
-
         try {
-            // Extraer la clave del evento del token (Ej: EVENTO_FACPYA_01_119557974)
+            // Generar la huella digital del dispositivo actual
+            const dispositivoFingerprint = await obtenerHuellaDispositivo();
+
+            // Extraer la clave del evento del token
             const ultimoGuion = tokenRecibido.lastIndexOf('_');
             const claveEvento = tokenRecibido.substring(0, ultimoGuion);
             const bloqueRemoto = parseInt(tokenRecibido.substring(ultimoGuion + 1));
@@ -78,18 +102,21 @@
                 return;
             }
 
-            // 3. Validar en Supabase si ESTE DISPOSITIVO ya registró asistencia en este evento
-            const { data: registroDispositivo, error: errDisp } = await supabaseClient
+            // 3. Validar en Supabase si ESTE HARDWARE ya registró asistencia en este evento
+            const { data: registroDispositivo } = await supabaseClient
                 .from('asistencias')
                 .select('matricula')
                 .eq('evento_id', eventoData.id)
-                .eq('dispositivo_id', dispositivoLocalID)
+                .eq('dispositivo_id', dispositivoFingerprint)
                 .maybeSingle();
 
             if (registroDispositivo) {
-                mostrarError(`Este dispositivo ya registró la matrícula ${registroDispositivo.matricula}. Bloqueo anti-fraude activo.`);
+                mostrarError(`Este dispositivo móvil ya registró la matrícula ${registroDispositivo.matricula}. Bloqueo anti-fraude activo.`);
                 return;
             }
+
+            // Guardar temporalmente en memoria la huella para usarla al registrar
+            window.currentDeviceFP = dispositivoFingerprint;
 
             // Si pasa todas las validaciones, mostrar formulario
             mensajeEl.innerHTML = "<p class='success'>¡Código de sesión válido!</p>";
@@ -116,7 +143,7 @@
         try {
             const ultimoGuion = tokenRecibido.lastIndexOf('_');
             const claveEvento = tokenRecibido.substring(0, ultimoGuion);
-            const dispositivoLocalID = localStorage.getItem("dispositivo_seguro_id");
+            const dispositivoFingerprint = window.currentDeviceFP || await obtenerHuellaDispositivo();
 
             const { data: eventoData } = await supabaseClient
                 .from('eventos')
@@ -132,13 +159,13 @@
                         evento_id: eventoData.id,
                         matricula: matricula,
                         token_usado: tokenRecibido,
-                        dispositivo_id: dispositivoLocalID
+                        dispositivo_id: dispositivoFingerprint
                     }
                 ]);
 
             if (insertError) {
                 if (insertError.code === '23505') {
-                    throw new Error("Esta matrícula o dispositivo ya cuenta con asistencia registrada.");
+                    throw new Error("Esta matrícula o este dispositivo ya cuenta con asistencia registrada.");
                 } else {
                     throw new Error(insertError.message);
                 }
