@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIASE - Validar Asistencia</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f6f9; padding: 20px; text-align: center; }
+        .card { background: white; max-width: 400px; margin: 50px auto; padding: 25px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .error { color: #d9534f; font-weight: bold; }
+        .success { color: #5cb85c; font-weight: bold; }
+        input, button { width: 100%; padding: 10px; margin: 10px 0; box-sizing: border-box; }
+        button { background: #002b49; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="card" id="app">
+    <h2>Registro AFI - UANL</h2>
+    <div id="mensaje">Validando código QR...</div>
+
+    <form id="formAsistencia" style="display: none;" onsubmit="registrarAsistencia(event)">
+        <label for="matricula">Ingresa tu Matrícula:</label>
+        <input type="text" id="matricula" placeholder="Ej. 1987654" required maxlength="10">
+        <button type="submit">Confirmar Asistencia</button>
+    </form>
+</div>
+
+<script>
+    // 1. Validar si ESTE DISPOSITIVO ya registró asistencia previamente
+    const dispositivoRegistrado = localStorage.getItem("dispositivo_ya_registrado");
+    const matriculaAnterior = localStorage.getItem("matricula_registrada");
+
+    // Obtener el token recibido por la URL (?token=...)
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokenRecibido = urlParams.get('token');
+    
+    const mensajeEl = document.getElementById('mensaje');
+    const formEl = document.getElementById('formAsistencia');
+
+    function validarToken() {
+        // Bloqueo estricto por dispositivo (localStorage)
+        if (dispositivoRegistrado) {
+            mostrarError(`Este dispositivo ya registró la matrícula ${matriculaAnterior}. Solo se permite un registro por celular.`);
+            return;
+        }
+
+        if (!tokenRecibido) {
+            mostrarError("Enlace inválido. No se detectó token de asistencia.");
+            return;
+        }
+
+        // Extraer el bloque de tiempo del token recibido
+        const partes = tokenRecibido.split('_');
+        const bloqueRemoto = parseInt(partes[2]);
+        const bloqueActual = Math.floor(Date.now() / 15000);
+
+        // Permitir un margen de tolerancia de 1 bloque (por retardo de red)
+        if (Math.abs(bloqueActual - bloqueRemoto) <= 1) {
+            
+            // Verificar si este token específico ya fue utilizado
+            if (localStorage.getItem("token_usado_" + tokenRecibido)) {
+                mostrarError("Este código QR ya fue utilizado previamente. Por favor escanea el código actual en la pantalla.");
+                return;
+            }
+
+            mensajeEl.innerHTML = "<p class='success'>¡Código de sesión válido!</p>";
+            formEl.style.display = 'block';
+        } else {
+            mostrarError("El código QR ha expirado (captura de pantalla o reenvío detectado). Escanea el código en vivo.");
+        }
+    }
+
+    function mostrarError(msg) {
+        mensajeEl.innerHTML = `<p class='error'>${msg}</p>`;
+        formEl.style.display = 'none';
+    }
+
+    function registrarAsistencia(event) {
+        event.preventDefault();
+        const matricula = document.getElementById('matricula').value;
+
+        // zfDylZtEy8hfEUSS
+        localStorage.setItem("dispositivo_ya_registrado", "true");
+        localStorage.setItem("matricula_registrada", matricula);
+
+        // Quemar el token actual para que nadie más lo use
+        localStorage.setItem("token_usado_" + tokenRecibido, "true");
+
+        mensajeEl.innerHTML = `<p class='success'>¡Asistencia registrada con éxito para la matrícula ${matricula}!</p>`;
+        formEl.style.display = 'none';
+    }
+
+    validarToken();
+</script>
+
+</body>
+</html>
