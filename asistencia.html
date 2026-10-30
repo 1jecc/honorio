@@ -113,7 +113,6 @@
         }
     }
 
-    // Validación principal: Obtiene datos del evento y compara GPS automáticamente
     async function validarTokenYUbicacion() {
         if (!tokenRecibido) {
             mostrarError("Enlace inválido. No se detectó token de asistencia.");
@@ -132,7 +131,7 @@
                 return;
             }
 
-            // 2. Buscar el evento y la ubicación del profesor en Supabase
+            // 2. Buscar el evento y la ubicación automática del profesor en Supabase
             const { data: eventoData, error: eventoError } = await supabaseClient
                 .from('eventos')
                 .select('id, lat, lon')
@@ -145,7 +144,7 @@
             }
 
             if (!eventoData.lat || !eventoData.lon) {
-                mostrarError("El profesor aún no ha registrado su ubicación de transmisión para este evento.");
+                mostrarError("El profesor aún no ha permitido o registrado su ubicación de transmisión.");
                 return;
             }
 
@@ -160,17 +159,17 @@
                 const alumnoLon = position.coords.longitude;
                 const precisionMetros = position.coords.accuracy;
 
-                // Candado de precisión contra ubicación aproximada
+                // Candado estricto contra ubicación aproximada
                 if (precisionMetros > 100) {
                     mostrarError(`Ubicación imprecisa (Margen de error: ${Math.round(precisionMetros)}m). Activa la ubicación **Precisa** en tu teléfono.`);
                     return;
                 }
 
-                // Calcular distancia automática contra la posición guardada del profesor
+                // Calcular distancia automática contra la posición del profesor
                 const distanciaAlProfesor = calcularDistanciaMetros(alumnoLat, alumnoLon, eventoData.lat, eventoData.lon);
 
                 if (distanciaAlProfesor > RADIO_METROS_PERMITIDO) {
-                    mostrarError(`Acceso denegado: Estás demasiado lejos del profesor (a ${Math.round(distanciaAlProfesor)} metros).`);
+                    mostrarError(`Acceso denegado: Estás demasiado lejos del profesor (a ${Math.round(distanciaAlProfesor)} metros). Debes estar presente en el área.`);
                     return;
                 }
 
