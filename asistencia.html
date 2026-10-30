@@ -45,7 +45,40 @@
     const mensajeEl = document.getElementById('mensaje');
     const formEl = document.getElementById('formAsistencia');
 
-    function validarToken() {
+    async function validarToken() {
+        if (!tokenRecibido) {
+            mostrarError("Enlace inválido. No se detectó token de asistencia.");
+            return;
+        }
+
+        // Consultar a Supabase si este dispositivo ya registró algo en este evento
+        // (Podemos almacenar un identificador único en una cookie que no se borre tan fácil o validar por IP/Dispositivo)
+        const dispositivoLocalID = localStorage.getItem("dispositivo_seguro_id") || ('DEV_' + Math.random().toString(36).substring(2));
+        localStorage.setItem("dispositivo_seguro_id", dispositivoLocalID);
+
+        // Revisar en la base de datos si este dispositivo_id ya registró asistencia hoy
+        const { data: registroPrevio, error: errPrevio } = await supabaseClient
+            .from('asistencias')
+            .select('matricula')
+            .eq('dispositivo_id', dispositivoLocalID)
+            .maybeSingle();
+
+        if (registroPrevio) {
+            mostrarError(`Este dispositivo ya registró la matrícula ${registroPrevio.matricula}. Bloqueo por seguridad anti-fraude.`);
+            return;
+        }
+
+        const ultimoGuion = tokenRecibido.lastIndexOf('_');
+        const bloqueRemoto = parseInt(tokenRecibido.substring(ultimoGuion + 1));
+        const bloqueActual = Math.floor(Date.now() / 15000);
+
+        if (Math.abs(bloqueActual - bloqueRemoto) <= 1) {
+            mensajeEl.innerHTML = "<p class='success'>¡Código de sesión válido!</p>";
+            formEl.style.display = 'block';
+        } else {
+            mostrarError("El código QR ha expirado (captura de pantalla o reenvío detectado). Escanea el código en vivo.");
+        }
+    }
         // Bloqueo estricto por dispositivo (localStorage)
         if (dispositivoRegistrado) {
             mostrarError(`Este dispositivo ya registró la matrícula ${matriculaAnterior}. Solo se permite un registro por celular.`);
