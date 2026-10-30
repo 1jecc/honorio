@@ -19,7 +19,7 @@
 
 <div class="card" id="app">
     <h2>Registro AFI - UANL</h2>
-    <div id="mensaje">Verificando ubicación precisa respecto al profesor y huella del dispositivo...</div>
+    <div id="mensaje">Conectando con el servidor y verificando ubicación...</div>
 
     <form id="formAsistencia" style="display: none;" onsubmit="registrarAsistencia(event)">
         <label for="matricula">Ingresa tu Matrícula:</label>
@@ -37,15 +37,11 @@
     const urlParams = new URLSearchParams(window.location.search);
     const tokenRecibido = urlParams.get('token');
     
-    // CAPTURAR LAS COORDENADAS DEL DISPOSITIVO DEL PROFESOR QUE VIENEN EN EL QR
-    const maestroLat = parseFloat(urlParams.get('lat'));
-    const maestroLon = parseFloat(urlParams.get('lon'));
-
     const mensajeEl = document.getElementById('mensaje');
     const formEl = document.getElementById('formAsistencia');
     const RADIO_METROS_PERMITIDO = 70; // 70 metros alrededor del profesor
 
-    // Fórmula de Haversine para calcular la distancia en metros entre el alumno y el profesor
+    // Fórmula de Haversine para calcular la distancia en metros
     function calcularDistanciaMetros(lat1, lon1, lat2, lon2) {
         const R = 6371e3;
         const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -57,7 +53,7 @@
         return R * c;
     }
 
-    // Función avanzada para generar huella digital única (WebGL + AudioContext)
+    // Función avanzada para huella digital única (WebGL + AudioContext)
     async function obtenerHuellaDispositivo() {
         try {
             const canvas = document.createElement('canvas');
@@ -117,71 +113,29 @@
         }
     }
 
-    // Validación estricta que exige GPS preciso y cercanía al profesor
+    // Validación principal: Obtiene datos del evento y compara GPS automáticamente
     async function validarTokenYUbicacion() {
         if (!tokenRecibido) {
             mostrarError("Enlace inválido. No se detectó token de asistencia.");
             return;
         }
 
-        if (isNaN(maestroLat) || isNaN(maestroLon)) {
-            mostrarError("El código QR no contiene la ubicación de transmisión del profesor.");
-            return;
-        }
-
-        if (!navigator.geolocation) {
-            mostrarError("Tu navegador no soporta geolocalización, la cual es obligatoria para validar asistencia.");
-            return;
-        }
-
-        navigator.geolocation.getCurrentPosition(async (position) => {
-            const usuarioLat = position.coords.latitude;
-            const usuarioLon = position.coords.longitude;
-            const precisionMetros = position.coords.accuracy;
-
-            // CANDADO DE PRECISIÓN: Rechazar si el margen de error supera los 100m (evita ubicación aproximada)
-            if (precisionMetros > 100) {
-                mostrarError(`Ubicación demasiado imprecisa (Margen de error: ${Math.round(precisionMetros)}m). Por favor, activa la ubicación **Precisa** en tu teléfono y vuelve a escanear.`);
-                return;
-            }
-
-            // Calcular distancia respecto al dispositivo del profesor
-            const distanciaAlProfesor = calcularDistanciaMetros(usuarioLat, usuarioLon, maestroLat, maestroLon);
-
-            if (distanciaAlProfesor > RADIO_METROS_PERMITIDO) {
-                mostrarError(`Acceso denegado: Estás demasiado lejos del profesor (a ${Math.round(distanciaAlProfesor)} metros). Debes estar presente en el área.`);
-                return;
-            }
-
-            // Si pasa los filtros de ubicación y precisión, procedemos con el token y hardware
-            continuarValidacionQR();
-
-        }, (error) => {
-            mostrarError("Debes permitir el acceso a tu ubicación **Precisa** para confirmar tu presencia en el evento.");
-        }, { 
-            enableHighAccuracy: true, 
-            timeout: 10000, 
-            maximumAge: 0 
-        });
-    }
-
-    async function continuarValidacionQR() {
         try {
-            const dispositivoFingerprint = await obtenerHuellaDispositivo();
-
             const ultimoGuion = tokenRecibido.lastIndexOf('_');
             const claveEvento = tokenRecibido.substring(0, ultimoGuion);
             const bloqueRemoto = parseInt(tokenRecibido.substring(ultimoGuion + 1));
             const bloqueActual = Math.floor(Date.now() / 15000);
 
+            // 1. Validar expiración del QR (15 segundos)
             if (Math.abs(bloqueActual - bloqueRemoto) > 1) {
-                mostrarError("El código QR ha expirado (captura de pantalla o reenvío detectado). Escanea el código en vivo.");
+                mostrarError("El código QR ha expirado (captura de pantalla detectada). Escanea el código en vivo.");
                 return;
             }
 
+            // 2. Buscar el evento y la ubicación del profesor en Supabase
             const { data: eventoData, error: eventoError } = await supabaseClient
                 .from('eventos')
-                .select('id')
+                .select('id, lat, lon')
                 .eq('clave_evento', claveEvento)
                 .single();
 
@@ -190,25 +144,64 @@
                 return;
             }
 
-            const { data: registroDispositivo } = await supabaseClient
-                .from('asistencias')
-                .select('matricula')
-                .eq('evento_id', eventoData.id)
-                .eq('dispositivo_id', dispositivoFingerprint)
-                .maybeSingle();
-
-            if (registroDispositivo) {
-                mostrarError(`Este dispositivo móvil ya registró la matrícula ${registroDispositivo.matricula}. Bloqueo anti-fraude activo.`);
+            if (!eventoData.lat || !eventoData.lon) {
+                mostrarError("El profesor aún no ha registrado su ubicación de transmisión para este evento.");
                 return;
             }
 
-            window.currentDeviceFP = dispositivoFingerprint;
-            mensajeEl.innerHTML = "<p class='success'>¡Ubicación precisa y código de sesión válidos!</p>";
-            formEl.style.display = 'block';
+            // 3. Obtener geolocalización precisa del alumno
+            if (!navigator.geolocation) {
+                mostrarError("Tu navegador no soporta geolocalización, la cual es obligatoria.");
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(async (position) => {
+                const alumnoLat = position.coords.latitude;
+                const alumnoLon = position.coords.longitude;
+                const precisionMetros = position.coords.accuracy;
+
+                // Candado de precisión contra ubicación aproximada
+                if (precisionMetros > 100) {
+                    mostrarError(`Ubicación imprecisa (Margen de error: ${Math.round(precisionMetros)}m). Activa la ubicación **Precisa** en tu teléfono.`);
+                    return;
+                }
+
+                // Calcular distancia automática contra la posición guardada del profesor
+                const distanciaAlProfesor = calcularDistanciaMetros(alumnoLat, alumnoLon, eventoData.lat, eventoData.lon);
+
+                if (distanciaAlProfesor > RADIO_METROS_PERMITIDO) {
+                    mostrarError(`Acceso denegado: Estás demasiado lejos del profesor (a ${Math.round(distanciaAlProfesor)} metros).`);
+                    return;
+                }
+
+                // 4. Validar huella del dispositivo contra registros previos
+                const dispositivoFingerprint = await obtenerHuellaDispositivo();
+
+                const { data: registroDispositivo } = await supabaseClient
+                    .from('asistencias')
+                    .select('matricula')
+                    .eq('evento_id', eventoData.id)
+                    .eq('dispositivo_id', dispositivoFingerprint)
+                    .maybeSingle();
+
+                if (registroDispositivo) {
+                    mostrarError(`Este dispositivo móvil ya registró la matrícula ${registroDispositivo.matricula}. Bloqueo anti-fraude activo.`);
+                    return;
+                }
+
+                window.currentDeviceFP = dispositivoFingerprint;
+                window.currentEventoId = eventoData.id;
+
+                mensajeEl.innerHTML = "<p class='success'>¡Ubicación precisa y código de sesión válidos!</p>";
+                formEl.style.display = 'block';
+
+            }, (error) => {
+                mostrarError("Debes permitir el acceso a tu ubicación **Precisa** para confirmar tu asistencia.");
+            }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
 
         } catch (err) {
             console.error(err);
-            mostrarError("Error al validar el acceso con la base de datos.");
+            mostrarError("Error al procesar la validación con la base de datos.");
         }
     }
 
@@ -225,21 +218,14 @@
         btnEnviar.textContent = "Registrando...";
 
         try {
-            const ultimoGuion = tokenRecibido.lastIndexOf('_');
-            const claveEvento = tokenRecibido.substring(0, ultimoGuion);
             const dispositivoFingerprint = window.currentDeviceFP || await obtenerHuellaDispositivo();
-
-            const { data: eventoData } = await supabaseClient
-                .from('eventos')
-                .select('id')
-                .eq('clave_evento', claveEvento)
-                .single();
+            const eventoId = window.currentEventoId;
 
             const { error: insertError } = await supabaseClient
                 .from('asistencias')
                 .insert([
                     {
-                        evento_id: eventoData.id,
+                        evento_id: eventoId,
                         matricula: matricula,
                         token_usado: tokenRecibido,
                         dispositivo_id: dispositivoFingerprint
@@ -264,7 +250,7 @@
         }
     }
 
-    // Ejecutar validación al cargar
+    // Ejecutar al cargar
     validarTokenYUbicacion();
 </script>
 
