@@ -30,7 +30,7 @@
     <script>
         // Configuración de conexión a tu Supabase
         const SUPABASE_URL = 'https://phodrnfzvxowxhewhbbq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBob2RybmZ6dnhvd3hoZXdoYmJxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MzM3MTcyNywiZXhwIjoyMTA4OTQ3NzI3fQ.usSIHWjncmGDNu6COe9Vo0kL3x_vsQfBGhDEqC7LJQg'; // La obtienes en la sección de API de Supabase
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBob2RybmZ6dnhvd3hoZXdoYmJxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MzM3MTcyNywiZXhwIjoyMTA4OTQ3NzI3fQ.usSIHWjncmGDNu6COe9Vo0kL3x_vsQfBGhDEqC7LJQg'; 
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         const qrContainer = document.getElementById("qrcode");
@@ -65,9 +65,11 @@
         function actualizarQR() {
             const tiempoBloque = Math.floor(Date.now() / 15000);
             
-            // El token ahora incluye la clave dinámica del evento obtenido de Supabase
+            // El token incluye la clave dinámica del evento
             const token = eventoActualClave + "_" + tiempoBloque;
-            const urlEstudiante = "asistencia.html?token=" + token;
+            
+            // 💡 AQUÍ ESTÁ EL CAMBIO CLAVE: Apuntar directamente a tu GitHub Pages
+            const urlEstudiante = "https://1jecc.github.io/honorio/asistencia.html?token=" + token;
             
             qrcode.makeCode(urlEstudiante);
             timeLeft = 15;
