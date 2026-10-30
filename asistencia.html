@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SIASE - Validar Asistencia</title>
+    <!-- Librería cliente de Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: Arial, sans-serif; background: #f4f6f9; padding: 20px; text-align: center; }
         .card { background: white; max-width: 400px; margin: 50px auto; padding: 25px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
@@ -22,11 +24,16 @@
     <form id="formAsistencia" style="display: none;" onsubmit="registrarAsistencia(event)">
         <label for="matricula">Ingresa tu Matrícula:</label>
         <input type="text" id="matricula" placeholder="Ej. 1987654" required maxlength="10">
-        <button type="submit">Confirmar Asistencia</button>
+        <button type="submit" id="btnEnviar">Confirmar Asistencia</button>
     </form>
 </div>
 
 <script>
+    // Configuración de Supabase (las mismas credenciales que usaste en el expositor)
+    const SUPABASE_URL = 'https://phodrnfzvxowxhewhbbq.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBob2RybmZ6dnhvd3hoZXdoYmJxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MzM3MTcyNywiZXhwIjoyMTA4OTQ3NzI3fQ.usSIHWjncmGDNu6COe9Vo0kL3x_vsQfBGhDEqC7LJQg'; // La obtienes en la sección de API de Supabase
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
     // 1. Validar si ESTE DISPOSITIVO ya registró asistencia previamente
     const dispositivoRegistrado = localStorage.getItem("dispositivo_ya_registrado");
     const matriculaAnterior = localStorage.getItem("matricula_registrada");
@@ -50,15 +57,16 @@
             return;
         }
 
-        // Extraer el bloque de tiempo del token recibido
-        const partes = tokenRecibido.split('_');
-        const bloqueRemoto = parseInt(partes[2]);
+        // Extraer la clave del evento y el bloque de tiempo del token recibido (Ej: AFI_EVENTO1_119557974)
+        const ultimoGuion = tokenRecibido.lastIndexOf('_');
+        const claveEventoClave = tokenRecibido.substring(0, ultimoGuion);
+        const bloqueRemoto = parseInt(tokenRecibido.substring(ultimoGuion + 1));
         const bloqueActual = Math.floor(Date.now() / 15000);
 
         // Permitir un margen de tolerancia de 1 bloque (por retardo de red)
         if (Math.abs(bloqueActual - bloqueRemoto) <= 1) {
             
-            // Verificar si este token específico ya fue utilizado
+            // Verificar si este token específico ya fue utilizado localmente
             if (localStorage.getItem("token_usado_" + tokenRecibido)) {
                 mostrarError("Este código QR ya fue utilizado previamente. Por favor escanea el código actual en la pantalla.");
                 return;
@@ -76,19 +84,62 @@
         formEl.style.display = 'none';
     }
 
-    function registrarAsistencia(event) {
+    async function registrarAsistencia(event) {
         event.preventDefault();
-        const matricula = document.getElementById('matricula').value;
+        const matricula = document.getElementById('matricula').value.trim();
+        const btnEnviar = document.getElementById('btnEnviar');
+        btnEnviar.disabled = true;
+        btnEnviar.textContent = "Registrando...";
 
-        // zfDylZtEy8hfEUSS
-        localStorage.setItem("dispositivo_ya_registrado", "true");
-        localStorage.setItem("matricula_registrada", matricula);
+        try {
+            // Extraer la clave del evento del token
+            const ultimoGuion = tokenRecibido.lastIndexOf('_');
+            const claveEvento = tokenRecibido.substring(0, ultimoGuion);
 
-        // Quemar el token actual para que nadie más lo use
-        localStorage.setItem("token_usado_" + tokenRecibido, "true");
+            // 1. Buscar el ID del evento actual en Supabase usando la clave
+            const { data: eventoData, error: eventoError } = await supabaseClient
+                .from('eventos')
+                .select('id')
+                .eq('clave_evento', claveEvento)
+                .single();
 
-        mensajeEl.innerHTML = `<p class='success'>¡Asistencia registrada con éxito para la matrícula ${matricula}!</p>`;
-        formEl.style.display = 'none';
+            if (eventoError || !eventoData) {
+                throw new Error("No se encontró el evento activo en la base de datos.");
+            }
+
+            // 2. Insertar la asistencia directamente en la tabla asistencias de Supabase
+            const { error: insertError } = await supabaseClient
+                .from('asistencias')
+                .insert([
+                    {
+                        evento_id: eventoData.id,
+                        matricula: matricula,
+                        token_usado: tokenRecibido,
+                        dispositivo_id: 'WEB_' + Math.random().toString(36).substring(2),                    }
+                ]);
+
+            if (insertError) {
+                // Si la base de datos detecta duplicidad o error
+                if (insertError.code === '23505') {
+                    throw new Error("Esta matrícula ya cuenta con asistencia registrada para este evento.");
+                } else {
+                    throw new Error(insertError.message);
+                }
+            }
+
+            // Bloquear el dispositivo localmente para que no registre más
+            localStorage.setItem("dispositivo_ya_registrado", "true");
+            localStorage.setItem("matricula_registrada", matricula);
+            localStorage.setItem("token_usado_" + tokenRecibido, "true");
+
+            mensajeEl.innerHTML = `<p class='success'>¡Asistencia registrada con éxito para la matrícula ${matricula}!</p>`;
+            formEl.style.display = 'none';
+
+        } catch (err) {
+            mostrarError("Error al registrar: " + err.message);
+            btnEnviar.disabled = false;
+            btnEnviar.textContent = "Confirmar Asistencia";
+        }
     }
 
     validarToken();
