@@ -129,10 +129,16 @@
         return false;
     }
 
-    async function iniciarValidacionHandshake() {
+   async function iniciarValidacionHandshake() {
         if (!tokenRecibido || !claveEvento) {
             mostrarError("❌ Enlace inválido o incompleto. Por favor, escanea el código QR oficial.");
             return;
+        }
+
+        // ✨ MAGIA AQUÍ: Oculta los parámetros de la URL de inmediato sin recargar la página
+        if (window.history.replaceState) {
+            const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+            window.history.replaceState({path: cleanUrl}, '', cleanUrl);
         }
 
         try {
