@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIASE - Control de Asistencia AFI (Expositor)</title>
+    <!-- Librería para generar el código QR -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- Librería cliente de Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #002b49; color: white; text-align: center; padding: 40px; }
+        .container { background: white; color: #333; display: inline-block; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+        #qrcode { margin: 20px auto; }
+        .timer { font-size: 1.2rem; font-weight: bold; color: #e74c3c; }
+        #nombreEvento { color: #f39c12; font-size: 1.5rem; margin-bottom: 10px; }
+        .error-gps { color: #ff6b6b; font-weight: bold; margin-top: 15px; }
+    </style>
+</head>
+<body>
+
+    <h1>SIASE - Panel del Expositor</h1>
+    <div id="nombreEvento">Obteniendo evento y GPS...</div>
+    <p>Los códigos QR cambian de forma aleatoria cada 15 segundos.</p>
+
+    <div class="container">
+        <div id="qrcode"></div>
+        <p class="timer">El código cambia en: <span id="countdown">15</span>s</p>
+    </div>
+    <div id="msgGps" class="error-gps"></div>
+
+    <script>
+        const SUPABASE_URL = 'https://phodrnfzvxowxhewhbbq.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBob2RybmZ6dnhvd3hoZXdoYmJxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MzM3MTcyNywiZXhwIjoyMTA4OTQ3NzI3fQ.usSIHWjncmGDNu6COe9Vo0kL3x_vsQfBGhDEqC7LJQg'; 
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        const qrContainer = document.getElementById("qrcode");
+        const countdownEl = document.getElementById("countdown");
+        const nombreEventoEl = document.getElementById("nombreEvento");
+        const msgGpsEl = document.getElementById("msgGps");
+        
+        let qrcode = new QRCode(qrContainer, { width: 280, height: 280 });
+        let timeLeft = 15;
+        let eventoActualId = null;
+        let eventoActualClave = "EVENTO_DEFAULT";
+
+        // Función para generar un token criptográfico aleatorio basado en el bloque de 15 segundos
+        async function generarTokenAleatorio(clave) {
+            const bloque = Math.floor(Date.now() / 15000);
+            const textoSecreto = clave + "_" + bloque + "_FACP_AFI_SECRET_2026";
+            const encoder = new TextEncoder();
+            const data = encoder.encode(textoSecreto);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            // Retorna un código aleatorio de 10 caracteres alfanuméricos
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 10);
+        }
+
+        async function iniciarSistema() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('eventos')
+                    .select('*')
+                    .eq('activo', true)
+                    .single();
+
+                if (error || !data) {
+                    nombreEventoEl.textContent = "No hay eventos activos en este momento";
+                    return;
+                }
+
+                eventoActualId = data.id;
+                eventoActualClave = data.clave_evento;
+                nombreEventoEl.textContent = data.nombre;
+
+                if (!navigator.geolocation) {
+                    msgGpsEl.textContent = "Tu navegador no soporta geolocalización.";
+                    return;
+                }
+
+                navigator.geolocation.getCurrentPosition(async (position) => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+
+                    await supabaseClient
+                        .from('eventos')
+                        .update({ lat: lat, lon: lon })
+                        .eq('id', eventoActualId);
+
+                    msgGpsEl.textContent = ""; 
+                    await actualizarQR();
+
+                    setInterval(async () => {
+                        timeLeft--;
+                        countdownEl.textContent = timeLeft;
+                        if (timeLeft <= 0) {
+                            await actualizarQR();
+                        }
+                    }, 1000);
+
+                }, (error) => {
+                    msgGpsEl.textContent = "⚠️ Debes permitir el acceso a tu ubicación GPS.";
+                }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+
+            } catch (err) {
+                console.error("Error general:", err);
+                nombreEventoEl.textContent = "Error de conexión con la base de datos";
+            }
+        }
+
+        async function actualizarQR() {
+            const tokenAleatorio = await generarTokenAleatorio(eventoActualClave);
+            
+            // 💡 URL LIMPIA: Ya no aparece asistencia.html, apunta directo a la raíz con el token aleatorio
+            const urlEstudiante = `https://1jecc.github.io/honorio/?token=${tokenAleatorio}&clave=${eventoActualClave}`;
+            
+            qrcode.makeCode(urlEstudiante);
+            timeLeft = 15;
+        }
+
+        iniciarSistema();
+    </script>
+</body>
+</html>
