@@ -19,7 +19,7 @@
 
 <div class="card" id="app">
     <h2>Registro AFI - UANL</h2>
-    <div id="mensaje">Conectando con el servidor y verificando ubicación...</div>
+    <div id="mensaje">Validando código QR en vivo y obteniendo ubicación...</div>
 
     <form id="formAsistencia" style="display: none;" onsubmit="registrarAsistencia(event)">
         <label for="matricula">Ingresa tu Matrícula:</label>
@@ -53,7 +53,7 @@
         return R * c;
     }
 
-    // Función avanzada para huella digital única (WebGL + AudioContext)
+    // Función de huella digital de hardware (WebGL + AudioContext)
     async function obtenerHuellaDispositivo() {
         try {
             const canvas = document.createElement('canvas');
@@ -113,7 +113,7 @@
         }
     }
 
-    async function validarTokenYUbicacion() {
+    async function iniciarValidacionHandshake() {
         if (!tokenRecibido) {
             mostrarError("Enlace inválido. No se detectó token de asistencia.");
             return;
@@ -125,13 +125,13 @@
             const bloqueRemoto = parseInt(tokenRecibido.substring(ultimoGuion + 1));
             const bloqueActual = Math.floor(Date.now() / 15000);
 
-            // 1. Validar expiración del QR (15 segundos)
+            // 1. VALIDACIÓN ESTRICTA DEL QR EN VIVO (Bloquea fotos de WhatsApp pasadas)
             if (Math.abs(bloqueActual - bloqueRemoto) > 1) {
                 mostrarError("El código QR ha expirado (captura de pantalla detectada). Escanea el código en vivo.");
                 return;
             }
 
-            // 2. Buscar el evento y la ubicación automática del profesor en Supabase
+            // 2. Buscar evento y su ubicación GPS en Supabase
             const { data: eventoData, error: eventoError } = await supabaseClient
                 .from('eventos')
                 .select('id, lat, lon')
@@ -144,63 +144,66 @@
             }
 
             if (!eventoData.lat || !eventoData.lon) {
-                mostrarError("El profesor aún no ha permitido o registrado su ubicación de transmisión.");
+                mostrarError("El profesor aún no ha transmitido su ubicación GPS.");
                 return;
             }
 
-            // 3. Obtener geolocalización precisa del alumno
+            // 3. Generar huella del dispositivo
+            const dispositivoFingerprint = await obtenerHuellaDispositivo();
+
+            // 4. OTORGAR PASE TEMPORAL (HANDSHAKE) Válido por 2 minutos en Supabase
+            const fechaExpiracion = new Date(Date.now() + 2 * 60 * 1000).toISOString(); // 2 minutos
+
+            await supabaseClient
+                .from('sesiones_temporales')
+                .upsert([
+                    {
+                        evento_id: eventoData.id,
+                        dispositivo_id: dispositivoFingerprint,
+                        expires_at: fechaExpiracion
+                    }
+                ], { onConflict: 'evento_id,dispositivo_id' });
+
+            // Guardar variables globales para el paso final
+            window.currentEventoId = eventoData.id;
+            window.currentDeviceFP = dispositivoFingerprint;
+            window.maestroLat = eventoData.lat;
+            window.maestroLon = eventoData.lon;
+
+            // 5. Ahora sí, pedir la ubicación GPS del alumno con calma (tiene 2 minutos)
             if (!navigator.geolocation) {
-                mostrarError("Tu navegador no soporta geolocalización, la cual es obligatoria.");
+                mostrarError("Tu navegador no soporta geolocalización.");
                 return;
             }
 
-            navigator.geolocation.getCurrentPosition(async (position) => {
+            navigator.geolocation.getCurrentPosition((position) => {
                 const alumnoLat = position.coords.latitude;
                 const alumnoLon = position.coords.longitude;
                 const precisionMetros = position.coords.accuracy;
 
-                // Candado estricto contra ubicación aproximada
+                // Candado de precisión
                 if (precisionMetros > 100) {
-                    mostrarError(`Ubicación imprecisa (Margen de error: ${Math.round(precisionMetros)}m). Activa la ubicación **Precisa** en tu teléfono.`);
+                    mostrarError(`Ubicación imprecisa (${Math.round(precisionMetros)}m). Activa la ubicación **Precisa**.`);
                     return;
                 }
 
-                // Calcular distancia automática contra la posición del profesor
-                const distanciaAlProfesor = calcularDistanciaMetros(alumnoLat, alumnoLon, eventoData.lat, eventoData.lon);
-
-                if (distanciaAlProfesor > RADIO_METROS_PERMITIDO) {
-                    mostrarError(`Acceso denegado: Estás demasiado lejos del profesor (a ${Math.round(distanciaAlProfesor)} metros). Debes estar presente en el área.`);
+                // Validar distancia contra el profesor (70 metros)
+                const distancia = calcularDistanciaMetros(alumnoLat, alumnoLon, window.maestroLat, window.maestroLon);
+                if (distancia > RADIO_METROS_PERMITIDO) {
+                    mostrarError(`Acceso denegado: Estás demasiado lejos del profesor (a ${Math.round(distancia)} metros).`);
                     return;
                 }
 
-                // 4. Validar huella del dispositivo contra registros previos
-                const dispositivoFingerprint = await obtenerHuellaDispositivo();
-
-                const { data: registroDispositivo } = await supabaseClient
-                    .from('asistencias')
-                    .select('matricula')
-                    .eq('evento_id', eventoData.id)
-                    .eq('dispositivo_id', dispositivoFingerprint)
-                    .maybeSingle();
-
-                if (registroDispositivo) {
-                    mostrarError(`Este dispositivo móvil ya registró la matrícula ${registroDispositivo.matricula}. Bloqueo anti-fraude activo.`);
-                    return;
-                }
-
-                window.currentDeviceFP = dispositivoFingerprint;
-                window.currentEventoId = eventoData.id;
-
-                mensajeEl.innerHTML = "<p class='success'>¡Ubicación precisa y código de sesión válidos!</p>";
+                mensajeEl.innerHTML = "<p class='success'>¡Ubicación y pase en vivo validados con éxito!</p>";
                 formEl.style.display = 'block';
 
             }, (error) => {
-                mostrarError("Debes permitir el acceso a tu ubicación **Precisa** para confirmar tu asistencia.");
-            }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+                mostrarError("Debes permitir el acceso a tu ubicación **Precisa** para continuar.");
+            }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
 
         } catch (err) {
             console.error(err);
-            mostrarError("Error al procesar la validación con la base de datos.");
+            mostrarError("Error al procesar la validación inicial.");
         }
     }
 
@@ -214,20 +217,30 @@
         const matricula = document.getElementById('matricula').value.trim();
         const btnEnviar = document.getElementById('btnEnviar');
         btnEnviar.disabled = true;
-        btnEnviar.textContent = "Registrando...";
+        btnEnviar.textContent = "Verificando pase y registrando...";
 
         try {
-            const dispositivoFingerprint = window.currentDeviceFP || await obtenerHuellaDispositivo();
-            const eventoId = window.currentEventoId;
+            // 1. Validar que el pase temporal en Supabase siga vigente (no hayan pasado los 2 minutos)
+            const { data: sesionData, error: sesionError } = await supabaseClient
+                .from('sesiones_temporales')
+                .select('expires_at')
+                .eq('evento_id', window.currentEventoId)
+                .eq('dispositivo_id', window.currentDeviceFP)
+                .single();
 
+            if (sesionError || !sesionData || new Date(sesionData.expires_at) < new Date()) {
+                throw new Error("El tiempo de sesión temporal ha expirado. Vuelve a escanear el QR en vivo.");
+            }
+
+            // 2. Insertar asistencia definitiva
             const { error: insertError } = await supabaseClient
                 .from('asistencias')
                 .insert([
                     {
-                        evento_id: eventoId,
+                        evento_id: window.currentEventoId,
                         matricula: matricula,
                         token_usado: tokenRecibido,
-                        dispositivo_id: dispositivoFingerprint
+                        dispositivo_id: window.currentDeviceFP
                     }
                 ]);
 
@@ -249,8 +262,8 @@
         }
     }
 
-    // Ejecutar al cargar
-    validarTokenYUbicacion();
+    // Ejecutar al cargar la página
+    iniciarValidacionHandshake();
 </script>
 
 </body>
