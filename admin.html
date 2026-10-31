@@ -3,30 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIASE - Control de Asistencia AFI (Expositor)</title>
-    <!-- Librería para generar el código QR -->
+    <title>SIASE - Control de Asistencia AFI</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <!-- Librería cliente de Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background-color: #002b49; color: white; text-align: center; padding: 40px; }
-        .container { background: white; color: #333; display: inline-block; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
-        #qrcode { margin: 20px auto; }
-        .timer { font-size: 1.2rem; font-weight: bold; color: #e74c3c; }
-        #nombreEvento { color: #f39c12; font-size: 1.5rem; margin-bottom: 10px; }
-        .error-gps { color: #ff6b6b; font-weight: bold; margin-top: 15px; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #002b49; color: white; text-align: center; padding: 30px; margin: 0; }
+        h1 { font-size: 1.8rem; margin-bottom: 5px; }
+        #nombreEvento { color: #f39c12; font-size: 1.4rem; margin-bottom: 20px; font-weight: bold; }
+        .container { background: white; color: #333; display: inline-block; padding: 25px; border-radius: 16px; box-shadow: 0 8px 25px rgba(0,0,0,0.3); max-width: 350px; width: 100%; }
+        #qrcode { margin: 15px auto; display: flex; justify-content: center; }
+        .timer { font-size: 1.1rem; font-weight: bold; color: #e74c3c; margin-top: 10px; }
+        .btn-symbol { display: inline-block; margin-top: 15px; background: #f4f6f9; color: #002b49; padding: 10px 15px; border-radius: 8px; text-decoration: none; font-weight: bold; border: 1px solid #dcdde1; transition: 0.2s; }
+        .btn-symbol:hover { background: #dfe4ea; }
+        .error-gps { color: #ff6b6b; font-weight: bold; margin-top: 15px; font-size: 0.9rem; }
     </style>
 </head>
 <body>
 
     <h1>SIASE - Panel del Expositor</h1>
-    <div id="nombreEvento">Obteniendo evento y GPS...</div>
-    <p>Los códigos QR cambian de forma aleatoria cada 15 segundos.</p>
+    <div id="nombreEvento">🔄 Sincronizando evento y GPS...</div>
 
     <div class="container">
         <div id="qrcode"></div>
-        <p class="timer">El código cambia en: <span id="countdown">15</span>s</p>
+        <p class="timer">⏱️ El código rota en: <span id="countdown">15</span>s</p>
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
+        <a href="#" id="linkSimbolo" target="_blank" class="btn-symbol">🔗 Enlace Seguro del Alumno</a>
     </div>
+    
     <div id="msgGps" class="error-gps"></div>
 
     <script>
@@ -38,13 +41,13 @@
         const countdownEl = document.getElementById("countdown");
         const nombreEventoEl = document.getElementById("nombreEvento");
         const msgGpsEl = document.getElementById("msgGps");
+        const linkSimboloEl = document.getElementById("linkSimbolo");
         
-        let qrcode = new QRCode(qrContainer, { width: 280, height: 280 });
+        let qrcode = new QRCode(qrContainer, { width: 240, height: 240 });
         let timeLeft = 15;
         let eventoActualId = null;
         let eventoActualClave = "EVENTO_DEFAULT";
 
-        // Función para generar un token criptográfico aleatorio basado en el bloque de 15 segundos
         async function generarTokenAleatorio(clave) {
             const bloque = Math.floor(Date.now() / 15000);
             const textoSecreto = clave + "_" + bloque + "_FACP_AFI_SECRET_2026";
@@ -52,7 +55,6 @@
             const data = encoder.encode(textoSecreto);
             const hashBuffer = await crypto.subtle.digest('SHA-256', data);
             const hashArray = Array.from(new Uint8Array(hashBuffer));
-            // Retorna un código aleatorio de 10 caracteres alfanuméricos
             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 10);
         }
 
@@ -65,7 +67,7 @@
                     .single();
 
                 if (error || !data) {
-                    nombreEventoEl.textContent = "No hay eventos activos en este momento";
+                    nombreEventoEl.textContent = "⚠️ No hay eventos activos en este momento";
                     return;
                 }
 
@@ -74,7 +76,7 @@
                 nombreEventoEl.textContent = data.nombre;
 
                 if (!navigator.geolocation) {
-                    msgGpsEl.textContent = "Tu navegador no soporta geolocalización.";
+                    msgGpsEl.textContent = "⚠️ Tu navegador no soporta geolocalización.";
                     return;
                 }
 
@@ -104,17 +106,16 @@
 
             } catch (err) {
                 console.error("Error general:", err);
-                nombreEventoEl.textContent = "Error de conexión con la base de datos";
+                nombreEventoEl.textContent = "❌ Error de conexión con la base de datos";
             }
         }
 
         async function actualizarQR() {
             const tokenAleatorio = await generarTokenAleatorio(eventoActualClave);
-            
-            // 💡 URL LIMPIA: Ya no aparece asistencia.html, apunta directo a la raíz con el token aleatorio
             const urlEstudiante = `https://1jecc.github.io/honorio/?token=${tokenAleatorio}&clave=${eventoActualClave}`;
             
             qrcode.makeCode(urlEstudiante);
+            linkSimboloEl.href = urlEstudiante;
             timeLeft = 15;
         }
 
