@@ -55,7 +55,7 @@
 
                 if (error) throw error;
 
-                selectEvento.innerHTML = '<option value="">-- Selecciona una clase o conferencia --';
+                selectEvento.innerHTML = '<option value="">-- Selecciona una clase o conferencia --</option>';
                 data.forEach(ev => {
                     const option = document.createElement('option');
                     option.value = ev.id;
@@ -65,9 +65,9 @@
                     selectEvento.appendChild(option);
                 });
 
-                // Si hay uno seleccionado por defecto, precargar su radio
                 actualizarRadioSeleccionado();
             } catch (err) {
+                console.error(err);
                 msgEstado.className = "msg error";
                 msgEstado.textContent = "Error al cargar los eventos de Supabase.";
             }
@@ -93,7 +93,6 @@
             btnIniciar.textContent = "Configurando...";
 
             try {
-                // 1. Desactivar todos y activar solo el elegido, guardando su radio de cobertura
                 await supabaseClient.from('eventos').update({ activo: false }).neq('id', eventoId);
                 
                 const { error } = await supabaseClient
@@ -106,7 +105,6 @@
                 msgEstado.className = "msg success";
                 msgEstado.textContent = "✅ Configuración guardada. Redirigiendo...";
 
-                // 2. Redirigir de inmediato al panel del expositor (admin.html)
                 setTimeout(() => {
                     window.location.href = 'admin.html';
                 }, 800);
