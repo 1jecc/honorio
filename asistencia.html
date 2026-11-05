@@ -3,45 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIASE - Validar Asistencia</title>
-    <!-- Librería cliente de Supabase -->
+    <title>SIASE - Registro de Asistencia</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        body { font-family: Arial, sans-serif; background: #f4f6f9; padding: 20px; text-align: center; }
-        .card { background: white; max-width: 400px; margin: 50px auto; padding: 25px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .error { color: #d9534f; font-weight: bold; }
-        .success { color: #5cb85c; font-weight: bold; }
-        input, button { width: 100%; padding: 10px; margin: 10px 0; box-sizing: border-box; }
-        button { background: #002b49; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f6f9; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .card { background: white; max-width: 380px; width: 100%; padding: 30px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); text-align: center; }
+        h2 { color: #002b49; margin-top: 0; font-size: 1.5rem; }
+        .status-box { font-size: 0.95rem; margin: 20px 0; line-height: 1.5; color: #555; }
+        .error { color: #e74c3c; font-weight: bold; }
+        .success { color: #2ecc71; font-weight: bold; }
+        input { width: 100%; padding: 12px; margin: 10px 0; box-sizing: border-box; border: 2px solid #dfe4ea; border-radius: 8px; font-size: 1rem; text-align: center; outline: none; transition: 0.2s; }
+        input:focus { border-color: #002b49; }
+        button { width: 100%; padding: 12px; margin-top: 10px; background: #002b49; color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:hover { background: #003f6b; }
     </style>
 </head>
 <body>
 
-<div class="card" id="app">
-    <h2>Registro AFI - UANL</h2>
-    <div id="mensaje">Validando código QR en vivo y obteniendo ubicación...</div>
+<div class="card">
+    <h2>🎓 SIASE UANL</h2>
+    <div id="mensaje" class="status-box">🔄 Validando seguridad y ubicación...</div>
 
     <form id="formAsistencia" style="display: none;" onsubmit="registrarAsistencia(event)">
-        <label for="matricula">Ingresa tu Matrícula:</label>
-        <input type="text" id="matricula" placeholder="Ej. 1987654" required maxlength="10">
-        <button type="submit" id="btnEnviar">Confirmar Asistencia</button>
+        <input type="text" id="matricula" placeholder="Ingresa tu Matrícula" required maxlength="10" autocomplete="off">
+        <button type="submit" id="btnEnviar">✨ Confirmar Asistencia</button>
     </form>
 </div>
 
 <script>
-    // Configuración de Supabase
     const SUPABASE_URL = 'https://phodrnfzvxowxhewhbbq.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBob2RybmZ6dnhvd3hoZXdoYmJxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MzM3MTcyNywiZXhwIjoyMTA4OTQ3NzI3fQ.usSIHWjncmGDNu6COe9Vo0kL3x_vsQfBGhDEqC7LJQg'; 
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const urlParams = new URLSearchParams(window.location.search);
     const tokenRecibido = urlParams.get('token');
+    const claveEvento = urlParams.get('clave');
     
     const mensajeEl = document.getElementById('mensaje');
     const formEl = document.getElementById('formAsistencia');
-    const RADIO_METROS_PERMITIDO = 70; // 70 metros alrededor del profesor
 
-    // Fórmula de Haversine para calcular la distancia en metros
     function calcularDistanciaMetros(lat1, lon1, lat2, lon2) {
         const R = 6371e3;
         const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -53,7 +53,6 @@
         return R * c;
     }
 
-    // Función de huella digital de hardware (WebGL + AudioContext)
     async function obtenerHuellaDispositivo() {
         try {
             const canvas = document.createElement('canvas');
@@ -107,52 +106,66 @@
             const hashBuffer = await crypto.subtle.digest('SHA-256', data);
             const hashArray = Array.from(new Uint8Array(hashBuffer));
             return 'FP_' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
-
         } catch (e) {
             return 'FP_FALLBACK_' + screen.width + 'x' + screen.height + '_' + Math.random();
         }
     }
 
+    async function validarTokenAleatorio(clave) {
+        const bloqueActual = Math.floor(Date.now() / 15000);
+        
+        for (let offset of [0, -1, 1]) {
+            const bloqueEval = bloqueActual + offset;
+            const textoSecreto = clave + "_" + bloqueEval + "_FACP_AFI_SECRET_2026";
+            const encoder = new TextEncoder();
+            const data = encoder.encode(textoSecreto);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const tokenGenerado = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 10);
+            
+            if (tokenGenerado === tokenRecibido) return true;
+        }
+        return false;
+    }
+
     async function iniciarValidacionHandshake() {
-        if (!tokenRecibido) {
-            mostrarError("Enlace inválido. No se detectó token de asistencia.");
+        if (!tokenRecibido || !claveEvento) {
+            mostrarError("❌ Enlace inválido o incompleto. Por favor, escanea el código QR oficial.");
             return;
         }
 
-        try {
-            const ultimoGuion = tokenRecibido.lastIndexOf('_');
-            const claveEvento = tokenRecibido.substring(0, ultimoGuion);
-            const bloqueRemoto = parseInt(tokenRecibido.substring(ultimoGuion + 1));
-            const bloqueActual = Math.floor(Date.now() / 15000);
+        // Limpiar parámetros de la barra de direcciones de Chrome
+        if (window.history.replaceState) {
+            const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+            window.history.replaceState({path: cleanUrl}, '', cleanUrl);
+        }
 
-            // 1. VALIDACIÓN ESTRICTA DEL QR EN VIVO (Bloquea fotos de WhatsApp pasadas)
-            if (Math.abs(bloqueActual - bloqueRemoto) > 1) {
-                mostrarError("El código QR ha expirado (captura de pantalla detectada). Escanea el código en vivo.");
+        try {
+            const esValido = await validarTokenAleatorio(claveEvento);
+            if (!esValido) {
+                mostrarError("⚠️ El código QR ha expirado o se detectó una captura de pantalla.");
                 return;
             }
 
-            // 2. Buscar evento y su ubicación GPS en Supabase
+            // Traer de Supabase el evento, sus coordenadas y su radio dinámico de cobertura
             const { data: eventoData, error: eventoError } = await supabaseClient
                 .from('eventos')
-                .select('id, lat, lon')
+                .select('id, lat, lon, radio_metros')
                 .eq('clave_evento', claveEvento)
                 .single();
 
             if (eventoError || !eventoData) {
-                mostrarError("El evento asociado al código QR no es válido o ya finalizó.");
+                mostrarError("❌ El evento asociado no es válido o ya finalizó.");
                 return;
             }
 
             if (!eventoData.lat || !eventoData.lon) {
-                mostrarError("El profesor aún no ha transmitido su ubicación GPS.");
+                mostrarError("⏳ El profesor aún no transmite su ubicación GPS.");
                 return;
             }
 
-            // 3. Generar huella del dispositivo
             const dispositivoFingerprint = await obtenerHuellaDispositivo();
-
-            // 4. OTORGAR PASE TEMPORAL (HANDSHAKE) Válido por 2 minutos en Supabase
-            const fechaExpiracion = new Date(Date.now() + 2 * 60 * 1000).toISOString(); // 2 minutos
+            const fechaExpiracion = new Date(Date.now() + 2 * 60 * 1000).toISOString();
 
             await supabaseClient
                 .from('sesiones_temporales')
@@ -164,15 +177,14 @@
                     }
                 ], { onConflict: 'evento_id,dispositivo_id' });
 
-            // Guardar variables globales para el paso final
             window.currentEventoId = eventoData.id;
             window.currentDeviceFP = dispositivoFingerprint;
             window.maestroLat = eventoData.lat;
             window.maestroLon = eventoData.lon;
+            window.radioPermitido = eventoData.radio_metros || 70; // Usa el radio configurado en la pantalla principal
 
-            // 5. Ahora sí, pedir la ubicación GPS del alumno con calma (tiene 2 minutos)
             if (!navigator.geolocation) {
-                mostrarError("Tu navegador no soporta geolocalización.");
+                mostrarError("❌ Tu navegador no soporta geolocalización.");
                 return;
             }
 
@@ -181,29 +193,29 @@
                 const alumnoLon = position.coords.longitude;
                 const precisionMetros = position.coords.accuracy;
 
-                // Candado de precisión
                 if (precisionMetros > 100) {
-                    mostrarError(`Ubicación imprecisa (${Math.round(precisionMetros)}m). Activa la ubicación **Precisa**.`);
+                    mostrarError(`⚠️ Ubicación imprecisa (${Math.round(precisionMetros)}m). Activa la ubicación **Precisa** en tu celular.`);
                     return;
                 }
 
-                // Validar distancia contra el profesor (70 metros)
                 const distancia = calcularDistanciaMetros(alumnoLat, alumnoLon, window.maestroLat, window.maestroLon);
-                if (distancia > RADIO_METROS_PERMITIDO) {
-                    mostrarError(`Acceso denegado: Estás demasiado lejos del profesor (a ${Math.round(distancia)} metros).`);
+                
+                // Valida contra la distancia configurada por el profesor en metros
+                if (distancia > window.radioPermitido) {
+                    mostrarError(`❌ Estás demasiado lejos (a ${Math.round(distancia)} metros). El límite es de ${window.radioPermitido}m.`);
                     return;
                 }
 
-                mensajeEl.innerHTML = "<p class='success'>¡Ubicación y pase en vivo validados con éxito!</p>";
+                mensajeEl.innerHTML = "<p class='success'>✅ ¡Ubicación y pase en vivo validados con éxito!</p>";
                 formEl.style.display = 'block';
 
             }, (error) => {
-                mostrarError("Debes permitir el acceso a tu ubicación **Precisa** para continuar.");
+                mostrarError("⚠️ Es obligatorio permitir el acceso a tu ubicación GPS para registrar asistencia.");
             }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
 
         } catch (err) {
             console.error(err);
-            mostrarError("Error al procesar la validación inicial.");
+            mostrarError("❌ Ocurrió un error al procesar la validación.");
         }
     }
 
@@ -217,10 +229,9 @@
         const matricula = document.getElementById('matricula').value.trim();
         const btnEnviar = document.getElementById('btnEnviar');
         btnEnviar.disabled = true;
-        btnEnviar.textContent = "Verificando pase y registrando...";
+        btnEnviar.textContent = "⏳ Registrando...";
 
         try {
-            // 1. Validar que el pase temporal en Supabase siga vigente (no hayan pasado los 2 minutos)
             const { data: sesionData, error: sesionError } = await supabaseClient
                 .from('sesiones_temporales')
                 .select('expires_at')
@@ -229,10 +240,9 @@
                 .single();
 
             if (sesionError || !sesionData || new Date(sesionData.expires_at) < new Date()) {
-                throw new Error("El tiempo de sesión temporal ha expirado. Vuelve a escanear el QR en vivo.");
+                throw new Error("El tiempo de sesión ha expirado. Vuelve a escanear el QR.");
             }
 
-            // 2. Insertar asistencia definitiva
             const { error: insertError } = await supabaseClient
                 .from('asistencias')
                 .insert([
@@ -246,23 +256,22 @@
 
             if (insertError) {
                 if (insertError.code === '23505') {
-                    throw new Error("Esta matrícula o este dispositivo ya cuenta con asistencia registrada.");
+                    throw new Error("Esta matrícula o dispositivo ya cuenta con asistencia registrada.");
                 } else {
                     throw new Error(insertError.message);
                 }
             }
 
-            mensajeEl.innerHTML = `<p class='success'>¡Asistencia registrada con éxito para la matrícula ${matricula}!</p>`;
+            mensajeEl.innerHTML = `<p class='success'>🎉 ¡Asistencia registrada con éxito!<br>Matrícula: <b>${matricula}</b></p>`;
             formEl.style.display = 'none';
 
         } catch (err) {
-            mostrarError("Error al registrar: " + err.message);
+            mostrarError("❌ " + err.message);
             btnEnviar.disabled = false;
-            btnEnviar.textContent = "Confirmar Asistencia";
+            btnEnviar.textContent = "✨ Confirmar Asistencia";
         }
     }
 
-    // Ejecutar al cargar la página
     iniciarValidacionHandshake();
 </script>
 
