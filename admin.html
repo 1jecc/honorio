@@ -51,7 +51,6 @@
         let eventoActualId = null;
         let eventoActualClave = "EVENTO_DEFAULT";
 
-        // Función para ocultar las barras del navegador automáticamente
         function toggleFullScreen() {
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen().catch(err => {
@@ -65,7 +64,6 @@
         }
 
         function actualizarQR() {
-            // El QR solo lleva la clave del evento de forma directa
             const urlEstudiante = `https://1jecc.github.io/honorio/asistencia.html?clave=${eventoActualClave}`;
             qrcode.makeCode(urlEstudiante);
         }
@@ -91,8 +89,16 @@
 
                 if (!navigator.geolocation) {
                     msgGpsEl.textContent = "⚠️ Tu navegador no soporta geolocalización.";
+                    actualizarQR();
                     return;
                 }
+
+                // Opciones optimizadas de GPS para evitar bloqueos en celulares de gama baja o redes lentas
+                const opcionesGps = {
+                    enableHighAccuracy: false, 
+                    timeout: 15000,
+                    maximumAge: 30000
+                };
 
                 navigator.geolocation.getCurrentPosition(async (position) => {
                     const lat = position.coords.latitude;
@@ -107,8 +113,9 @@
                     actualizarQR();
 
                 }, (error) => {
-                    msgGpsEl.textContent = "⚠️ Debes permitir el acceso a tu ubicación GPS.";
-                }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+                    msgGpsEl.textContent = "⚠️ Aviso: Ubicación GPS no disponible temporalmente, mostrando QR.";
+                    actualizarQR(); // Permite mostrar el código QR aunque falle la geolocalización
+                }, opcionesGps);
 
             } catch (err) {
                 console.error("Error general:", err);
