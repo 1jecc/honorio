@@ -16,7 +16,6 @@
         .info-config { font-size: 0.9rem; color: #dfe4ea; margin-bottom: 20px; }
         .container { background: white; color: #333; display: inline-block; padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
         #qrcode { margin: 10px auto; display: flex; justify-content: center; }
-        .timer { font-size: 1.1rem; font-weight: bold; color: #e74c3c; margin-top: 12px; }
         .error-gps { color: #ff6b6b; font-weight: bold; margin-top: 15px; font-size: 0.9rem; }
     </style>
 </head>
@@ -34,7 +33,6 @@
 
     <div class="container">
         <div id="qrcode"></div>
-        <p class="timer">⏱️ Rota en: <span id="countdown">15</span>s</p>
     </div>
     
     <div id="msgGps" class="error-gps"></div>
@@ -45,16 +43,13 @@
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         const qrContainer = document.getElementById("qrcode");
-        const countdownEl = document.getElementById("countdown");
         const nombreEventoEl = document.getElementById("nombreEvento");
         const infoConfigEl = document.getElementById("infoConfig");
         const msgGpsEl = document.getElementById("msgGps");
         
         let qrcode = new QRCode(qrContainer, { width: 250, height: 250 });
-        let timeLeft = 15;
         let eventoActualId = null;
         let eventoActualClave = "EVENTO_DEFAULT";
-        let timerInterval = null;
 
         // Función para ocultar las barras del navegador automáticamente
         function toggleFullScreen() {
@@ -69,22 +64,10 @@
             }
         }
 
-        async function generarTokenAleatorio(clave) {
-            const bloque = Math.floor(Date.now() / 15000);
-            const textoSecreto = clave + "_" + bloque + "_FACP_AFI_SECRET_2026";
-            const encoder = new TextEncoder();
-            const data = encoder.encode(textoSecreto);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 10);
-        }
-
-        async function actualizarQR() {
-            const tokenAleatorio = await generarTokenAleatorio(eventoActualClave);
-            const urlEstudiante = `https://1jecc.github.io/honorio/asistencia.html?token=${tokenAleatorio}&clave=${eventoActualClave}`;
-            
+        function actualizarQR() {
+            // El QR solo lleva la clave del evento de forma directa
+            const urlEstudiante = `https://1jecc.github.io/honorio/asistencia.html?clave=${eventoActualClave}`;
             qrcode.makeCode(urlEstudiante);
-            timeLeft = 15;
         }
 
         async function iniciarSistema() {
@@ -121,16 +104,7 @@
                         .eq('id', eventoActualId);
 
                     msgGpsEl.textContent = ""; 
-                    await actualizarQR();
-
-                    if (timerInterval) clearInterval(timerInterval);
-                    timerInterval = setInterval(async () => {
-                        timeLeft--;
-                        countdownEl.textContent = timeLeft;
-                        if (timeLeft <= 0) {
-                            await actualizarQR();
-                        }
-                    }, 1000);
+                    actualizarQR();
 
                 }, (error) => {
                     msgGpsEl.textContent = "⚠️ Debes permitir el acceso a tu ubicación GPS.";
