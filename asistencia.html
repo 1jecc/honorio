@@ -53,61 +53,29 @@
         return R * c;
     }
 
-    async function obtenerHuellaDispositivo() {
+    // Huella digital rápida y compatible con móviles (evita bloqueos de AudioContext)
+    async function obtenerHuellaMovil() {
         try {
             const canvas = document.createElement('canvas');
             const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
             const debugInfo = gl ? gl.getExtension('WEBGL_debug_renderer_info') : null;
-            const gpu = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'unknown';
+            const gpu = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'mobile-gpu';
 
-            let audioHash = "no-audio";
-            try {
-                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                const oscillator = audioCtx.createOscillator();
-                const analyser = audioCtx.createAnalyser();
-                const gainNode = audioCtx.createGain();
-                const scriptProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
-
-                oscillator.type = 'triangle';
-                oscillator.frequency.value = 10000;
-                
-                scriptProcessor.onaudioprocess = function (e) {
-                    const output = e.inputBuffer.getChannelData(0);
-                    let sum = 0;
-                    for (let i = 0; i < output.length; i++) {
-                        sum += Math.abs(output[i]);
-                    }
-                    audioHash = sum.toString();
-                    oscillator.stop();
-                    audioCtx.close();
-                };
-
-                oscillator.connect(gainNode);
-                gainNode.connect(analyser);
-                analyser.connect(scriptProcessor);
-                scriptProcessor.connect(audioCtx.destination);
-                oscillator.start(0);
-            } catch (err) {
-                audioHash = "audio-blocked";
-            }
-
-            const datosHardware = [
+            const componentes = [
                 navigator.userAgent,
                 navigator.language,
                 screen.width + 'x' + screen.height,
-                screen.colorDepth,
                 new Date().getTimezoneOffset(),
-                gpu,
-                audioHash
+                gpu
             ].join('|||');
 
             const encoder = new TextEncoder();
-            const data = encoder.encode(datosHardware);
+            const data = encoder.encode(componentes);
             const hashBuffer = await crypto.subtle.digest('SHA-256', data);
             const hashArray = Array.from(new Uint8Array(hashBuffer));
             return 'FP_' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
         } catch (e) {
-            return 'FP_FALLBACK_' + screen.width + 'x' + screen.height + '_' + Math.random();
+            return 'FP_FALLBACK_' + Math.random();
         }
     }
 
@@ -134,7 +102,7 @@
             return;
         }
 
-        // Limpiar parámetros de la barra de direcciones de Chrome
+        // Limpiar URL para los alumnos
         if (window.history.replaceState) {
             const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
             window.history.replaceState({path: cleanUrl}, '', cleanUrl);
@@ -143,11 +111,10 @@
         try {
             const esValido = await validarTokenAleatorio(claveEvento);
             if (!esValido) {
-                mostrarError("⚠️ El código QR ha expirado o se detectó una captura de pantalla.");
+                mostrarError("⚠️ El código QR ha expirado. Espera a que rote el siguiente.");
                 return;
             }
 
-            // Traer de Supabase el evento, sus coordenadas y su radio dinámico de cobertura
             const { data: eventoData, error: eventoError } = await supabaseClient
                 .from('eventos')
                 .select('id, lat, lon, radio_metros')
@@ -164,7 +131,7 @@
                 return;
             }
 
-            const dispositivoFingerprint = await obtenerHuellaDispositivo();
+            const dispositivoFingerprint = await obtenerHuellaMovil();
             const fechaExpiracion = new Date(Date.now() + 2 * 60 * 1000).toISOString();
 
             await supabaseClient
@@ -181,37 +148,39 @@
             window.currentDeviceFP = dispositivoFingerprint;
             window.maestroLat = eventoData.lat;
             window.maestroLon = eventoData.lon;
-            window.radioPermitido = eventoData.radio_metros || 70; // Usa el radio configurado en la pantalla principal
+            window.radioPermitido = eventoData.radio_metros || 70;
 
             if (!navigator.geolocation) {
                 mostrarError("❌ Tu navegador no soporta geolocalización.");
                 return;
             }
 
+            mensajeEl.innerHTML = "📍 Obteniendo ubicación GPS precisa...";
+
             navigator.geolocation.getCurrentPosition((position) => {
                 const alumnoLat = position.coords.latitude;
                 const alumnoLon = position.coords.longitude;
                 const precisionMetros = position.coords.accuracy;
 
-                if (precisionMetros > 100) {
-                    mostrarError(`⚠️ Ubicación imprecisa (${Math.round(precisionMetros)}m). Activa la ubicación **Precisa** en tu celular.`);
+                // Margen flexible de precisión para interiores (hasta 250m para evitar bloqueos por techos)
+                if (precisionMetros > 250) {
+                    mostrarError(`⚠️ Ubicación imprecisa (${Math.round(precisionMetros)}m). Acércate a una ventana o activa la ubicación de alta precisión.`);
                     return;
                 }
 
                 const distancia = calcularDistanciaMetros(alumnoLat, alumnoLon, window.maestroLat, window.maestroLon);
                 
-                // Valida contra la distancia configurada por el profesor en metros
                 if (distancia > window.radioPermitido) {
                     mostrarError(`❌ Estás demasiado lejos (a ${Math.round(distancia)} metros). El límite es de ${window.radioPermitido}m.`);
                     return;
                 }
 
-                mensajeEl.innerHTML = "<p class='success'>✅ ¡Ubicación y pase en vivo validados con éxito!</p>";
+                mensajeEl.innerHTML = "<p class='success'>✅ ¡Ubicación validada con éxito!</p>";
                 formEl.style.display = 'block';
 
             }, (error) => {
                 mostrarError("⚠️ Es obligatorio permitir el acceso a tu ubicación GPS para registrar asistencia.");
-            }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+            }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
 
         } catch (err) {
             console.error(err);
