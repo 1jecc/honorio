@@ -132,7 +132,7 @@
                 const { data, error } = await supabaseClient
                     .from('eventos')
                     .select('*')
-                    .order('id', { ascending: false });
+                    .order('created_at', { ascending: false });
 
                 if (error) throw error;
 
@@ -163,9 +163,9 @@
                     <td>${radioSeguro}m</td>
                     <td>
                         <div class="acciones-td">
-                            <button onclick="irAVerQR(${ev.id})" class="btn-warning" title="Ver QR">📷 QR</button>
-                            <button onclick="irAVerAsistentes(${ev.id})" class="btn-info" title="Ver Asistentes">📋 Asistentes</button>
-                            <button onclick="abrirModalEditar(${ev.id})" class="btn-secundario" title="Editar">✏️ Editar</button>
+                            <button onclick="irAVerQR('${ev.id}')" class="btn-warning" title="Ver QR">📷 QR</button>
+                            <button onclick="irAVerAsistentes('${ev.id}')" class="btn-info" title="Ver Asistentes">📋 Asistentes</button>
+                            <button onclick="abrirModalEditar('${ev.id}')" class="btn-secundario" title="Editar">✏️ Editar</button>
                         </div>
                     </td>
                 `;
@@ -182,14 +182,13 @@
             renderizarTabla(filtrados);
         }
 
-        // Activación corregida pasando el ID numérico exacto
+        // Activación correcta soportando UUIDs o strings como ID
         async function activarEvento(id) {
             try {
-                const idNum = parseInt(id);
-                // Desactiva todos
-                await supabaseClient.from('eventos').update({ activo: false }).neq('id', 0);
-                // Activa el seleccionado
-                const { error } = await supabaseClient.from('eventos').update({ activo: true }).eq('id', idNum);
+                // Desactiva todos los eventos existentes de forma segura
+                await supabaseClient.from('eventos').update({ activo: false }).not('id', 'is', null);
+                // Activa el evento seleccionado usando su ID literal
+                const { error } = await supabaseClient.from('eventos').update({ activo: true }).eq('id', id);
                 if (error) throw error;
             } catch (err) {
                 alert("Error al activar evento: " + err.message);
@@ -201,7 +200,7 @@
         function cerrarModalNuevo() { document.getElementById('modalNuevo').style.display = 'none'; }
 
         function abrirModalEditar(id) {
-            const ev = listaEventosGlobal.find(item => Number(item.id) === Number(id));
+            const ev = listaEventosGlobal.find(item => String(item.id) === String(id));
             if (!ev) return;
             
             document.getElementById('editId').value = ev.id;
@@ -222,7 +221,7 @@
             btnCrear.textContent = "Creando...";
 
             try {
-                await supabaseClient.from('eventos').update({ activo: false }).neq('id', 0);
+                await supabaseClient.from('eventos').update({ activo: false }).not('id', 'is', null);
 
                 const { error } = await supabaseClient
                     .from('eventos')
@@ -247,7 +246,7 @@
 
         async function guardarEdicionEvento(e) {
             e.preventDefault();
-            const id = parseInt(document.getElementById('editId').value);
+            const id = document.getElementById('editId').value;
             const nuevoNombre = document.getElementById('editNombre').value.trim();
             const nuevaClave = document.getElementById('editClave').value.trim().toUpperCase();
             const nuevoRadio = parseInt(document.getElementById('editRadio').value);
