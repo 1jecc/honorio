@@ -117,9 +117,15 @@
     </div>
 
     <script>
-        const SUPABASE_URL = 'https://phodrnfzvxowxhewhbbq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBob2RybmZ6dnhvd3hoZXdoYmJxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MzM3MTcyNywiZXhwIjoyMTA4OTQ3NzI3fQ.usSIHWjncmGDNu6COe9Vo0kL3x_vsQfBGhDEqC7LJQg'; 
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Inicialización segura de Supabase con respaldo
+        let supabaseClient = null;
+        try {
+            const SUPABASE_URL = 'https://phodrnfzvxowxhewhbbq.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBob2RybmZ6dnhvd3hoZXdoYmJxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MzM3MTcyNywiZXhwIjoyMTA4OTQ3NzI3fQ.usSIHWjncmGDNu6COe9Vo0kL3x_vsQfBGhDEqC7LJQg'; 
+            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        } catch (e) {
+            console.error("Error al iniciar cliente Supabase:", e);
+        }
 
         const tablaEventosBody = document.getElementById('tablaEventosBody');
         const inputBuscador = document.getElementById('inputBuscador');
@@ -128,6 +134,11 @@
         let listaEventosGlobal = [];
 
         async function cargarEventos() {
+            if (!supabaseClient) {
+                tablaEventosBody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: red;">Error crítico de conexión.</td></tr>';
+                return;
+            }
+
             try {
                 const { data, error } = await supabaseClient
                     .from('eventos')
@@ -141,29 +152,32 @@
 
             } catch (err) {
                 console.error(err);
+                tablaEventosBody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: red;">Error al cargar los eventos de la base de datos.</td></tr>';
                 msgEstado.className = "msg error";
-                msgEstado.textContent = "Error al cargar los eventos.";
+                msgEstado.textContent = "Error: " + err.message;
             }
         }
 
         function renderizarTabla(eventos) {
             tablaEventosBody.innerHTML = '';
-            if (eventos.length === 0) {
+            if (!eventos || eventos.length === 0) {
                 tablaEventosBody.innerHTML = '<tr><td colspan="3" style="text-align: center;">No se encontraron eventos.</td></tr>';
                 return;
             }
 
             eventos.forEach(ev => {
                 const tr = document.createElement('tr');
+                const nombreSeguro = ev.nombre ? ev.nombre : 'Sin nombre';
+                const radioSeguro = ev.radio_metros || 70;
                 
                 tr.innerHTML = `
-                    <td><b>${ev.nombre}</b></td>
-                    <td>${ev.radio_metros || 70}m</td>
+                    <td><b>${nombreSeguro}</b></td>
+                    <td>${radioSeguro}m</td>
                     <td>
                         <div class="acciones-td">
-                            <button onclick="irAVerQR(${ev.id})" class="btn-warning" title="Ver QR">📷 QR</button>
-                            <button onclick="irAVerAsistentes(${ev.id})" class="btn-info" title="Ver Asistentes">📋 Asistentes</button>
-                            <button onclick="abrirModalEditar(${ev.id})" class="btn-secundario" title="Editar">✏️ Editar</button>
+                            <button onclick="irAVerQR('${ev.id}')" class="btn-warning" title="Ver QR">📷 QR</button>
+                            <button onclick="irAVerAsistentes('${ev.id}')" class="btn-info" title="Ver Asistentes">📋 Asistentes</button>
+                            <button onclick="abrirModalEditar('${ev.id}')" class="btn-secundario" title="Editar">✏️ Editar</button>
                         </div>
                     </td>
                 `;
@@ -174,7 +188,7 @@
         function filtrarEventos() {
             const texto = inputBuscador.value.toLowerCase().trim();
             const filtrados = listaEventosGlobal.filter(ev => 
-                ev.nombre.toLowerCase().includes(texto) || 
+                (ev.nombre && ev.nombre.toLowerCase().includes(texto)) || 
                 (ev.clave_evento && ev.clave_evento.toLowerCase().includes(texto))
             );
             renderizarTabla(filtrados);
@@ -194,11 +208,11 @@
         function cerrarModalNuevo() { document.getElementById('modalNuevo').style.display = 'none'; }
 
         function abrirModalEditar(id) {
-            const ev = listaEventosGlobal.find(item => item.id === id);
+            const ev = listaEventosGlobal.find(item => String(item.id) === String(id));
             if (!ev) return;
             
             document.getElementById('editId').value = ev.id;
-            document.getElementById('editNombre').value = ev.nombre;
+            document.getElementById('editNombre').value = ev.nombre || '';
             document.getElementById('editClave').value = ev.clave_evento || '';
             document.getElementById('editRadio').value = ev.radio_metros || 70;
             document.getElementById('modalEditar').style.display = 'flex';
@@ -243,7 +257,7 @@
             const id = document.getElementById('editId').value;
             const nuevoNombre = document.getElementById('editNombre').value.trim();
             const nuevaClave = document.getElementById('editClave').value.trim().toUpperCase();
-            const nuevoRadio = parseInt(document.getElementById('editRadio').value);
+            const nuevoRadio = parseInt(document.getElementById('editRadio5') || document.getElementById('editRadio').value);
             const btnGuardar = document.getElementById('btnGuardarEdit');
 
             btnGuardar.disabled = true;
@@ -278,6 +292,7 @@
             window.location.href = 'asistentes.html';
         }
 
+        // Carga inicial protegida
         cargarEventos();
     </script>
 </body>
