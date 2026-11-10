@@ -8,15 +8,14 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #002b49; color: white; text-align: center; padding: 15px; margin: 0; transition: 0.3s; }
-        .top-bar { display: flex; justify-content: space-between; align-items: center; max-width: 650px; margin: 0 auto 15px auto; width: 100%; flex-wrap: wrap; gap: 8px; }
+        .top-bar { display: flex; justify-content: center; align-items: center; max-width: 650px; margin: 0 auto 15px auto; width: 100%; gap: 15px; flex-wrap: wrap; }
         .btn-nav { background: rgba(255, 255, 255, 0.2); color: white; border: 1px solid rgba(255, 255, 255, 0.4); padding: 8px 14px; border-radius: 8px; text-decoration: none; font-size: 0.85rem; font-weight: bold; cursor: pointer; transition: 0.2s; }
         .btn-nav:hover { background: rgba(255, 255, 255, 0.35); }
         h1 { font-size: 1.8rem; margin: 5px 0; }
-        #nombreEvento { color: #f39c12; font-size: 1.3rem; font-weight: bold; margin-bottom: 3px; }
-        .info-config { font-size: 0.9rem; color: #dfe4ea; margin-bottom: 20px; }
+        #nombreEvento { color: #f39c12; font-size: 1.3rem; font-weight: bold; margin-bottom: 15px; }
         
         .container { background: white; color: #333; display: inline-block; padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); transition: 0.3s; cursor: pointer; }
-        .container:hover { transform: scale(1.02); } /* Da un toque visual de que se puede interactuar */
+        .container:hover { transform: scale(1.02); }
         
         #qrcode { margin: 10px auto; display: flex; justify-content: center; }
         .timer { font-size: 1.1rem; font-weight: bold; color: #e74c3c; margin-top: 12px; }
@@ -26,7 +25,6 @@
         body.modo-gigante .top-bar,
         body.modo-gigante h1,
         body.modo-gigante #nombreEvento,
-        body.modo-gigante .info-config,
         body.modo-gigante #msgGps {
             display: none !important;
         }
@@ -47,18 +45,16 @@
 </head>
 <body>
 
-    <!-- BARRA SUPERIOR VISIBLE -->
+    <!-- BARRA SUPERIOR SIMPLIFICADA -->
     <div class="top-bar">
         <a href="index.html" class="btn-nav">⚙️ Volver a Configuración</a>
         <span style="font-size: 0.85rem; color: #dfe4ea;">💡 <i>Tip: Clic en el QR para ampliar</i></span>
-        <button onclick="toggleFullScreen()" class="btn-nav">📺 Pantalla Completa</button>
     </div>
 
     <h1>SIASE - Panel del Expositor</h1>
     <div id="nombreEvento">🔄 Sincronizando evento...</div>
-    <div id="infoConfig" class="info-config"></div>
 
-    <!-- CONTENEDOR DEL QR (Un clic entra a gigante, doble clic sale) -->
+    <!-- CONTENEDOR DEL QR (Clic entra a gigante, doble clic sale y activa pantalla completa nativa) -->
     <div class="container" id="cardContainer" onclick="entrarModoGigante()" ondblclick="salirModoGigante()">
         <div id="qrcode"></div>
         <p class="timer">⏱️ Rota en: <span id="countdown">15</span>s</p>
@@ -74,7 +70,6 @@
         const qrContainer = document.getElementById("qrcode");
         const countdownEl = document.getElementById("countdown");
         const nombreEventoEl = document.getElementById("nombreEvento");
-        const infoConfigEl = document.getElementById("infoConfig");
         const msgGpsEl = document.getElementById("msgGps");
         
         let qrcode = new QRCode(qrContainer, { width: 250, height: 250 });
@@ -89,7 +84,7 @@
             modoGiganteActivo = true;
             document.body.classList.add('modo-gigante');
             
-            // Activa pantalla completa del navegador de forma automática al hacer clic en el QR
+            // Activa automáticamente la pantalla completa del navegador al hacer clic en el QR
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen().catch(() => {});
             }
@@ -102,7 +97,7 @@
             modoGiganteActivo = false;
             document.body.classList.remove('modo-gigante');
 
-            // Sale del modo pantalla completa del navegador
+            // Sale de la pantalla completa del navegador al dar doble clic
             if (document.fullscreenElement && document.exitFullscreen) {
                 document.exitFullscreen().catch(() => {});
             }
@@ -114,18 +109,6 @@
             qrContainer.innerHTML = "";
             qrcode = new QRCode(qrContainer, { width: tamanio, height: tamanio });
             actualizarQR();
-        }
-
-        function toggleFullScreen() {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(err => {
-                    alert("No se pudo activar la pantalla completa: " + err.message);
-                });
-            } else {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen();
-                }
-            }
         }
 
         async function generarTokenAleatorio(clave) {
@@ -156,14 +139,12 @@
 
                 if (error || !data) {
                     nombreEventoEl.textContent = "⚠️ No hay eventos activos";
-                    infoConfigEl.textContent = "Configura un evento desde la página principal.";
                     return;
                 }
 
                 eventoActualId = data.id;
                 eventoActualClave = data.clave_evento;
                 nombreEventoEl.textContent = data.nombre;
-                infoConfigEl.textContent = `📍 Radio de cobertura: ${data.radio_metros || 70} metros`;
 
                 if (!navigator.geolocation) {
                     msgGpsEl.textContent = "⚠️ Tu navegador no soporta geolocalización.";
