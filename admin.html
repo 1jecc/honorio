@@ -45,7 +45,6 @@
 </head>
 <body>
 
-    <!-- BARRA SUPERIOR SIMPLIFICADA -->
     <div class="top-bar">
         <a href="index.html" class="btn-nav">⚙️ Volver a Configuración</a>
         <span style="font-size: 0.85rem; color: #dfe4ea;">💡 <i>Tip: Clic en el QR para ampliar</i></span>
@@ -54,7 +53,6 @@
     <h1>SIASE - Panel del Expositor</h1>
     <div id="nombreEvento">🔄 Sincronizando evento...</div>
 
-    <!-- CONTENEDOR DEL QR (Clic entra a gigante, doble clic sale y activa pantalla completa nativa) -->
     <div class="container" id="cardContainer" onclick="entrarModoGigante()" ondblclick="salirModoGigante()">
         <div id="qrcode"></div>
         <p class="timer">⏱️ Rota en: <span id="countdown">15</span>s</p>
@@ -84,7 +82,6 @@
             modoGiganteActivo = true;
             document.body.classList.add('modo-gigante');
             
-            // Activa automáticamente la pantalla completa del navegador al hacer clic en el QR
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen().catch(() => {});
             }
@@ -97,7 +94,6 @@
             modoGiganteActivo = false;
             document.body.classList.remove('modo-gigante');
 
-            // Sale de la pantalla completa del navegador al dar doble clic
             if (document.fullscreenElement && document.exitFullscreen) {
                 document.exitFullscreen().catch(() => {});
             }
@@ -131,20 +127,22 @@
 
         async function iniciarSistema() {
             try {
+                // CORREGIDO: Evita el error 406 usando .limit(1) en lugar de .single()
                 const { data, error } = await supabaseClient
                     .from('eventos')
                     .select('*')
                     .eq('activo', true)
-                    .single();
+                    .limit(1);
 
-                if (error || !data) {
+                if (error || !data || data.length === 0) {
                     nombreEventoEl.textContent = "⚠️ No hay eventos activos";
                     return;
                 }
 
-                eventoActualId = data.id;
-                eventoActualClave = data.clave_evento;
-                nombreEventoEl.textContent = data.nombre;
+                const evento = data[0];
+                eventoActualId = evento.id;
+                eventoActualClave = evento.clave_evento || "EVENTO";
+                nombreEventoEl.textContent = evento.nombre;
 
                 if (!navigator.geolocation) {
                     msgGpsEl.textContent = "⚠️ Tu navegador no soporta geolocalización.";
@@ -174,6 +172,14 @@
 
                 }, (error) => {
                     msgGpsEl.textContent = "⚠️ Debes permitir el acceso a tu ubicación GPS.";
+                    // Aunque falle el GPS, carga el QR para que no se quede bloqueado
+                    actualizarQR();
+                    if (timerInterval) clearInterval(timerInterval);
+                    timerInterval = setInterval(async () => {
+                        timeLeft--;
+                        countdownEl.textContent = timeLeft;
+                        if (timeLeft <= 0) await actualizarQR();
+                    }, 1000);
                 }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
 
             } catch (err) {
