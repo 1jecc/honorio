@@ -43,4 +43,242 @@
 
         /* ESTILOS DEL MODAL */
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
-        .modal-content { background: white; padding: 25px; border-radius: 16px; max-width: 385px; width
+        .modal-content { background: white; padding: 25px; border-radius: 16px; max-width: 385px; width: 90%; color: #333; text-align: left; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .close { color: #aaa; float: right; font-size: 24px; font-weight: bold; cursor: pointer; }
+        .close:hover { color: black; }
+        .modal-content label { display: block; margin-top: 10px; font-weight: bold; font-size: 0.85rem; color: #444; }
+        .modal-content input { width: 100%; margin-top: 4px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>⚙️ Panel de Control - Gestión de Eventos</h1>
+        
+        <div class="top-actions">
+            <input type="text" id="inputBuscador" class="buscador" placeholder="🔍 Buscar evento por nombre..." oninput="filtrarEventos()">
+            <button onclick="abrirModalNuevo()" class="btn-success">➕ Registrar Nuevo Evento</button>
+        </div>
+
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>NOMBRE DEL EVENTO</th>
+                        <th>RADIO (M)</th>
+                        <th>ACCIONES</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaEventosBody">
+                    <tr><td colspan="3" style="text-align: center;">Cargando eventos...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="msgEstado" class="msg"></div>
+    </div>
+
+    <!-- MODAL NUEVO -->
+    <div id="modalNuevo" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="cerrarModalNuevo()">&times;</span>
+            <h3>➕ Crear Nuevo Evento</h3>
+            <form id="formNuevoEvento" onsubmit="crearNuevoEvento(event)">
+                <label for="nuevoNombre">Nombre de la Clase/Conferencia:</label>
+                <input type="text" id="nuevoNombre" placeholder="Ej. Arquitectura de Software" required>
+
+                <label for="nuevaClave">Clave Única:</label>
+                <input type="text" id="nuevaClave" placeholder="Ej. ARQ_2026" required>
+
+                <button type="submit" id="btnCrear" class="btn-success" style="width: 100%; margin-top: 15px;">Crear y Activar Evento</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL EDITAR -->
+    <div id="modalEditar" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="cerrarModalEditar()">&times;</span>
+            <h3>✏️ Editar Evento</h3>
+            <form id="formEditarEvento" onsubmit="guardarEdicionEvento(event)">
+                <input type="hidden" id="editId">
+                <label for="editNombre">Nombre del Evento:</label>
+                <input type="text" id="editNombre" required>
+
+                <label for="editClave">Clave Única:</label>
+                <input type="text" id="editClave" required>
+
+                <label for="editRadio">Radio de Cobertura (Metros):</label>
+                <input type="number" id="editRadio" min="10" max="500" required>
+
+                <button type="submit" id="btnGuardarEdit" class="btn-success" style="width: 100%; margin-top: 15px;">Guardar Cambios</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://phodrnfzvxowxhewhbbq.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBob2RybmZ6dnhvd3hoZXdoYmJxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MzM3MTcyNywiZXhwIjoyMTA4OTQ3NzI3fQ.usSIHWjncmGDNu6COe9Vo0kL3x_vsQfBGhDEqC7LJQg'; 
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        const tablaEventosBody = document.getElementById('tablaEventosBody');
+        const inputBuscador = document.getElementById('inputBuscador');
+        const msgEstado = document.getElementById('msgEstado');
+        
+        let listaEventosGlobal = [];
+
+        async function cargarEventos() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('eventos')
+                    .select('*')
+                    .order('id', { ascending: false });
+
+                if (error) throw error;
+
+                listaEventosGlobal = data || [];
+                renderizarTabla(listaEventosGlobal);
+
+            } catch (err) {
+                console.error(err);
+                msgEstado.className = "msg error";
+                msgEstado.textContent = "Error al cargar los eventos.";
+            }
+        }
+
+        function renderizarTabla(eventos) {
+            tablaEventosBody.innerHTML = '';
+            if (eventos.length === 0) {
+                tablaEventosBody.innerHTML = '<tr><td colspan="3" style="text-align: center;">No se encontraron eventos.</td></tr>';
+                return;
+            }
+
+            eventos.forEach(ev => {
+                const tr = document.createElement('tr');
+                
+                tr.innerHTML = `
+                    <td><b>${ev.nombre}</b></td>
+                    <td>${ev.radio_metros || 70}m</td>
+                    <td>
+                        <div class="acciones-td">
+                            <button onclick="irAVerQR(${ev.id})" class="btn-warning" title="Ver QR">📷 QR</button>
+                            <button onclick="irAVerAsistentes(${ev.id})" class="btn-info" title="Ver Asistentes">📋 Asistentes</button>
+                            <button onclick="abrirModalEditar(${ev.id})" class="btn-secundario" title="Editar">✏️ Editar</button>
+                        </div>
+                    </td>
+                `;
+                tablaEventosBody.appendChild(tr);
+            });
+        }
+
+        function filtrarEventos() {
+            const texto = inputBuscador.value.toLowerCase().trim();
+            const filtrados = listaEventosGlobal.filter(ev => 
+                ev.nombre.toLowerCase().includes(texto) || 
+                (ev.clave_evento && ev.clave_evento.toLowerCase().includes(texto))
+            );
+            renderizarTabla(filtrados);
+        }
+
+        async function activarEvento(id) {
+            try {
+                await supabaseClient.from('eventos').update({ activo: false }).neq('id', 0);
+                const { error } = await supabaseClient.from('eventos').update({ activo: true }).eq('id', id);
+                if (error) throw error;
+            } catch (err) {
+                alert("Error al activar evento: " + err.message);
+            }
+        }
+
+        function abrirModalNuevo() { document.getElementById('modalNuevo').style.display = 'flex'; }
+        function cerrarModalNuevo() { document.getElementById('modalNuevo').style.display = 'none'; }
+
+        function abrirModalEditar(id) {
+            const ev = listaEventosGlobal.find(item => item.id === id);
+            if (!ev) return;
+            
+            document.getElementById('editId').value = ev.id;
+            document.getElementById('editNombre').value = ev.nombre;
+            document.getElementById('editClave').value = ev.clave_evento || '';
+            document.getElementById('editRadio').value = ev.radio_metros || 70;
+            document.getElementById('modalEditar').style.display = 'flex';
+        }
+        function cerrarModalEditar() { document.getElementById('modalEditar').style.display = 'none'; }
+
+        async function crearNuevoEvento(e) {
+            e.preventDefault();
+            const nombre = document.getElementById('nuevoNombre').value.trim();
+            const clave = document.getElementById('nuevaClave').value.trim().toUpperCase();
+            const btnCrear = document.getElementById('btnCrear');
+
+            btnCrear.disabled = true;
+            btnCrear.textContent = "Creando...";
+
+            try {
+                await supabaseClient.from('eventos').update({ activo: false }).neq('id', 0);
+
+                const { error } = await supabaseClient
+                    .from('eventos')
+                    .insert([{ nombre: nombre, clave_evento: clave, activo: true, radio_metros: 70 }]);
+
+                if (error) {
+                    if (error.code === '23505') throw new Error("La clave de evento ya existe.");
+                    throw error;
+                }
+
+                cerrarModalNuevo();
+                document.getElementById('formNuevoEvento').reset();
+                await cargarEventos();
+
+            } catch (err) {
+                alert("Error: " + err.message);
+            } finally {
+                btnCrear.disabled = false;
+                btnCrear.textContent = "Crear y Activar Evento";
+            }
+        }
+
+        async function guardarEdicionEvento(e) {
+            e.preventDefault();
+            const id = document.getElementById('editId').value;
+            const nuevoNombre = document.getElementById('editNombre').value.trim();
+            const nuevaClave = document.getElementById('editClave').value.trim().toUpperCase();
+            const nuevoRadio = parseInt(document.getElementById('editRadio').value);
+            const btnGuardar = document.getElementById('btnGuardarEdit');
+
+            btnGuardar.disabled = true;
+            btnGuardar.textContent = "Guardando...";
+
+            try {
+                const { error } = await supabaseClient
+                    .from('eventos')
+                    .update({ nombre: nuevoNombre, clave_evento: nuevaClave, radio_metros: nuevoRadio })
+                    .eq('id', id);
+
+                if (error) throw error;
+
+                cerrarModalEditar();
+                await cargarEventos();
+
+            } catch (err) {
+                alert("Error al actualizar: " + err.message);
+            } finally {
+                btnGuardar.disabled = false;
+                btnGuardar.textContent = "Guardar Cambios";
+            }
+        }
+
+        async function irAVerQR(id) {
+            await activarEvento(id);
+            window.location.href = 'admin.html';
+        }
+
+        async function irAVerAsistentes(id) {
+            await activarEvento(id);
+            window.location.href = 'asistentes.html';
+        }
+
+        cargarEventos();
+    </script>
+</body>
+</html>
