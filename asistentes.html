@@ -24,6 +24,7 @@
         td { padding: 14px 18px; border-bottom: 1px solid #e9ecef; color: #495057; }
         tr:hover { background-color: #f8f9fa; }
         .msg { text-align: center; margin-top: 15px; font-weight: bold; font-size: 0.85rem; }
+        .error { color: #e74c3c; }
     </style>
 </head>
 <body>
@@ -86,12 +87,12 @@
                 const evento = eventoData[0];
                 nombreEventoEl.textContent = `Clase / Conferencia: ${evento.nombre} (${evento.clave_evento || 'N/D'})`;
 
-                // Carga las asistencias filtradas por este evento
+                // Carga las asistencias ordenadas por fecha_registro usando la columna correcta
                 const { data: asistenciasData, error: asisError } = await supabaseClient
                     .from('asistencias')
                     .select('*')
                     .eq('evento_id', evento.id)
-                    .order('created_at', { ascending: false });
+                    .order('fecha_registro', { ascending: false });
 
                 if (asisError) throw asisError;
 
