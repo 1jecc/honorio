@@ -116,7 +116,7 @@
         </div>
     </div>
 
-    <script>
+<script>
         const SUPABASE_URL = 'https://phodrnfzvxowxhewhbbq.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBob2RybmZ6dnhvd3hoZXdoYmJxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MzM3MTcyNywiZXhwIjoyMTA4OTQ3NzI3fQ.usSIHWjncmGDNu6COe9Vo0kL3x_vsQfBGhDEqC7LJQg'; 
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -182,6 +182,7 @@
             renderizarTabla(filtrados);
         }
 
+        // FUNCIÓN CORREGIDA: Ahora espera de forma síncrona a que Supabase marque el evento como activo
         async function activarEvento(id) {
             try {
                 await supabaseClient.from('eventos').update({ activo: false }).neq('id', 0);
@@ -189,6 +190,7 @@
                 if (error) throw error;
             } catch (err) {
                 alert("Error al activar evento: " + err.message);
+                throw err;
             }
         }
 
@@ -270,14 +272,20 @@
             }
         }
 
+        // Botón QR: Espera la activación y redirige a admin
         async function irAVerQR(id) {
-            await activarEvento(id);
-            window.location.href = 'admin.html';
+            try {
+                await activarEvento(id);
+                window.location.href = 'admin.html';
+            } catch (e) {}
         }
 
+        // Botón Asistentes: Espera la activación y redirige a asistentes
         async function irAVerAsistentes(id) {
-            await activarEvento(id);
-            window.location.href = 'asistentes.html';
+            try {
+                await activarEvento(id);
+                window.location.href = 'asistentes.html';
+            } catch (e) {}
         }
 
         cargarEventos();
