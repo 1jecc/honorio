@@ -14,12 +14,15 @@
         h1 { font-size: 1.8rem; margin: 5px 0; }
         #nombreEvento { color: #f39c12; font-size: 1.3rem; font-weight: bold; margin-bottom: 3px; }
         .info-config { font-size: 0.9rem; color: #dfe4ea; margin-bottom: 20px; }
-        .container { background: white; color: #333; display: inline-block; padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); transition: 0.3s; }
+        
+        .container { background: white; color: #333; display: inline-block; padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); transition: 0.3s; cursor: pointer; }
+        .container:hover { transform: scale(1.02); } /* Da un toque visual de que se puede interactuar */
+        
         #qrcode { margin: 10px auto; display: flex; justify-content: center; }
         .timer { font-size: 1.1rem; font-weight: bold; color: #e74c3c; margin-top: 12px; }
         .error-gps { color: #ff6b6b; font-weight: bold; margin-top: 15px; font-size: 0.9rem; }
 
-        /* MODO QR GIGANTE SIN BOTONES EXTRA */
+        /* MODO PANTALLA GIGANTE LIMPIO */
         body.modo-gigante .top-bar,
         body.modo-gigante h1,
         body.modo-gigante #nombreEvento,
@@ -33,29 +36,30 @@
             align-items: center;
             height: 100vh;
             padding: 0;
-            cursor: pointer; /* Indica que se puede hacer clic para salir */
         }
         body.modo-gigante .container {
             padding: 50px;
-            border-radius: 30px;
-            box-shadow: 0 0 60px rgba(0,0,0,0.9);
+            border-radius: 35px;
+            box-shadow: 0 0 70px rgba(0,0,0,0.9);
+            transform: none !important;
         }
     </style>
 </head>
-<body onclick="manejarClickGlobal(event)">
+<body>
 
     <!-- BARRA SUPERIOR VISIBLE -->
     <div class="top-bar">
         <a href="index.html" class="btn-nav">⚙️ Volver a Configuración</a>
-        <button onclick="toggleModoGigante(event)" class="btn-nav">🔍 Pantalla Gigante QR</button>
-        <button onclick="toggleFullScreen(event)" class="btn-nav">📺 Pantalla Completa</button>
+        <span style="font-size: 0.85rem; color: #dfe4ea;">💡 <i>Tip: Clic en el QR para ampliar</i></span>
+        <button onclick="toggleFullScreen()" class="btn-nav">📺 Pantalla Completa</button>
     </div>
 
     <h1>SIASE - Panel del Expositor</h1>
     <div id="nombreEvento">🔄 Sincronizando evento...</div>
     <div id="infoConfig" class="info-config"></div>
 
-    <div class="container" id="cardContainer">
+    <!-- CONTENEDOR DEL QR (Un clic entra a gigante, doble clic sale) -->
+    <div class="container" id="cardContainer" onclick="entrarModoGigante()" ondblclick="salirModoGigante()">
         <div id="qrcode"></div>
         <p class="timer">⏱️ Rota en: <span id="countdown">15</span>s</p>
     </div>
@@ -80,31 +84,39 @@
         let timerInterval = null;
         let modoGiganteActivo = false;
 
-        function toggleModoGigante(e) {
-            if (e) e.stopPropagation(); // Evita que dispare el evento global inmediatamente
-            modoGiganteActivo = !modoGiganteActivo;
-            document.body.classList.toggle('modo-gigante', modoGiganteActivo);
+        function entrarModoGigante() {
+            if (modoGiganteActivo) return;
+            modoGiganteActivo = true;
+            document.body.classList.add('modo-gigante');
             
+            // Activa pantalla completa del navegador de forma automática al hacer clic en el QR
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            }
+
+            redibujarQR(450);
+        }
+
+        function salirModoGigante() {
+            if (!modoGiganteActivo) return;
+            modoGiganteActivo = false;
+            document.body.classList.remove('modo-gigante');
+
+            // Sale del modo pantalla completa del navegador
+            if (document.fullscreenElement && document.exitFullscreen) {
+                document.exitFullscreen().catch(() => {});
+            }
+
+            redibujarQR(250);
+        }
+
+        function redibujarQR(tamanio) {
             qrContainer.innerHTML = "";
-            let nuevoAncho = modoGiganteActivo ? 450 : 250;
-            qrcode = new QRCode(qrContainer, { width: nuevoAncho, height: nuevoAncho });
+            qrcode = new QRCode(qrContainer, { width: tamanio, height: tamanio });
             actualizarQR();
         }
 
-        // Si está en modo gigante y hace clic en cualquier parte de la pantalla (fuera del cuadro blanco), se sale
-        function manejarClickGlobal(e) {
-            if (modoGiganteActivo) {
-                // Si hace clic directamente en el fondo oscuro
-                modoGiganteActivo = false;
-                document.body.classList.remove('modo-gigante');
-                qrContainer.innerHTML = "";
-                qrcode = new QRCode(qrContainer, { width: 250, height: 250 });
-                actualizarQR();
-            }
-        }
-
-        function toggleFullScreen(e) {
-            if (e) e.stopPropagation();
+        function toggleFullScreen() {
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen().catch(err => {
                     alert("No se pudo activar la pantalla completa: " + err.message);
