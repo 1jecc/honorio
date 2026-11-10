@@ -19,7 +19,7 @@
         .timer { font-size: 1.1rem; font-weight: bold; color: #e74c3c; margin-top: 12px; }
         .error-gps { color: #ff6b6b; font-weight: bold; margin-top: 15px; font-size: 0.9rem; }
 
-        /* MODO QR GIGANTE */
+        /* MODO QR GIGANTE SIN BOTONES EXTRA */
         body.modo-gigante .top-bar,
         body.modo-gigante h1,
         body.modo-gigante #nombreEvento,
@@ -33,35 +33,22 @@
             align-items: center;
             height: 100vh;
             padding: 0;
+            cursor: pointer; /* Indica que se puede hacer clic para salir */
         }
         body.modo-gigante .container {
-            padding: 40px;
+            padding: 50px;
             border-radius: 30px;
-            box-shadow: 0 0 50px rgba(0,0,0,0.8);
-        }
-        /* El contenedor flotante para el botón de salir del modo gigante */
-        #btnFlotanteSalir {
-            display: none;
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 999;
-        }
-        body.modo-gigante #btnFlotanteSalir {
-            display: block;
+            box-shadow: 0 0 60px rgba(0,0,0,0.9);
         }
     </style>
 </head>
-<body>
-
-    <!-- BOTÓN FLOTANTE CUANDO ESTÁ EN MODO GIGANTE -->
-    <button onclick="toggleModoGigante()" id="btnFlotanteSalir" class="btn-nav" style="background: rgba(231, 76, 60, 0.8);">❌ Salir de Pantalla Gigante</button>
+<body onclick="manejarClickGlobal(event)">
 
     <!-- BARRA SUPERIOR VISIBLE -->
     <div class="top-bar">
         <a href="index.html" class="btn-nav">⚙️ Volver a Configuración</a>
-        <button onclick="toggleModoGigante()" class="btn-nav" id="btnAmpliarTexto">🔍 Ampliar QR (Pantalla Gigante)</button>
-        <button onclick="toggleFullScreen()" class="btn-nav">📺 Pantalla Completa</button>
+        <button onclick="toggleModoGigante(event)" class="btn-nav">🔍 Pantalla Gigante QR</button>
+        <button onclick="toggleFullScreen(event)" class="btn-nav">📺 Pantalla Completa</button>
     </div>
 
     <h1>SIASE - Panel del Expositor</h1>
@@ -86,7 +73,6 @@
         const infoConfigEl = document.getElementById("infoConfig");
         const msgGpsEl = document.getElementById("msgGps");
         
-        // Creamos un QR de tamaño estándar para escritorio
         let qrcode = new QRCode(qrContainer, { width: 250, height: 250 });
         let timeLeft = 15;
         let eventoActualId = null;
@@ -94,19 +80,31 @@
         let timerInterval = null;
         let modoGiganteActivo = false;
 
-        // Función para alternar la vista gigante del QR
-        function toggleModoGigante() {
+        function toggleModoGigante(e) {
+            if (e) e.stopPropagation(); // Evita que dispare el evento global inmediatamente
             modoGiganteActivo = !modoGiganteActivo;
             document.body.classList.toggle('modo-gigante', modoGiganteActivo);
             
-            // Recreamos el código QR con un tamaño mucho mayor para que no pierda calidad en pantalla gigante
             qrContainer.innerHTML = "";
-            let nuevoAncho = modoGiganteActivo ? 420 : 250;
+            let nuevoAncho = modoGiganteActivo ? 450 : 250;
             qrcode = new QRCode(qrContainer, { width: nuevoAncho, height: nuevoAncho });
             actualizarQR();
         }
 
-        function toggleFullScreen() {
+        // Si está en modo gigante y hace clic en cualquier parte de la pantalla (fuera del cuadro blanco), se sale
+        function manejarClickGlobal(e) {
+            if (modoGiganteActivo) {
+                // Si hace clic directamente en el fondo oscuro
+                modoGiganteActivo = false;
+                document.body.classList.remove('modo-gigante');
+                qrContainer.innerHTML = "";
+                qrcode = new QRCode(qrContainer, { width: 250, height: 250 });
+                actualizarQR();
+            }
+        }
+
+        function toggleFullScreen(e) {
+            if (e) e.stopPropagation();
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen().catch(err => {
                     alert("No se pudo activar la pantalla completa: " + err.message);
