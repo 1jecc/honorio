@@ -3,20 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIASE - Configuración de Evento</title>
+    <title>SIASE - Panel de Control</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #002b49; color: white; text-align: center; padding: 20px; margin: 0; }
-        .container { background: white; color: #333; display: inline-block; padding: 25px; border-radius: 16px; box-shadow: 0 8px 25px rgba(0,0,0,0.3); max-width: 420px; width: 100%; text-align: left; }
+        .container { background: white; color: #333; display: inline-block; padding: 25px; border-radius: 16px; box-shadow: 0 8px 25px rgba(0,0,0,0.3); max-width: 440px; width: 100%; text-align: left; }
         h1 { font-size: 1.4rem; color: #002b49; text-align: center; margin-top: 0; }
-        h3 { color: #002b49; font-size: 1rem; margin: 15px 0 5px 0; border-top: 1px solid #eee; padding-top: 15px; }
+        h3 { color: #002b49; font-size: 0.95rem; margin: 0 0 10px 0; border-bottom: 2px solid #f1f2f6; padding-bottom: 8px; }
         label { display: block; margin-top: 10px; font-weight: bold; font-size: 0.85rem; color: #444; }
-        select, input { width: 100%; padding: 10px; margin-top: 4px; box-sizing: border-box; border: 2px solid #dfe4ea; border-radius: 8px; font-size: 0.95rem; outline: none; }
-        select:focus, input:focus { border-color: #002b49; }
-        button { width: 100%; padding: 12px; margin-top: 15px; background: #002b49; color: white; border: none; border-radius: 8px; font-size: 0.95rem; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        input { width: 100%; padding: 10px; margin-top: 4px; box-sizing: border-box; border: 2px solid #dfe4ea; border-radius: 8px; font-size: 0.95rem; outline: none; }
+        input:focus { border-color: #002b49; }
+        button { width: 100%; padding: 12px; margin-top: 12px; background: #002b49; color: white; border: none; border-radius: 8px; font-size: 0.95rem; font-weight: bold; cursor: pointer; transition: 0.2s; }
         button:hover { background: #003f6b; }
-        .btn-secundario { background: #718093; margin-top: 10px; }
+        .btn-secundario { background: #718093; }
         .btn-secundario:hover { background: #2f3640; }
+        .btn-success { background: #2ecc71; }
+        .btn-success:hover { background: #27ae60; }
+        .btn-warning { background: #f39c12; }
+        .btn-warning:hover { background: #d35400; }
+        .seccion { background: #f8f9fa; padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e9ecef; }
+        .evento-activo-box { font-size: 1rem; color: #2d3436; font-weight: bold; margin-bottom: 10px; text-align: center; background: #dfe6e9; padding: 10px; border-radius: 8px; }
         .msg { text-align: center; margin-top: 10px; font-weight: bold; font-size: 0.85rem; }
         .error { color: #e74c3c; }
         .success { color: #2ecc71; }
@@ -27,31 +33,33 @@
     <div class="container">
         <h1>⚙️ Panel de Control</h1>
         
-        <!-- SECCIÓN 1: SELECCIONAR Y LANZAR EVENTO -->
-        <form id="formConfig" onsubmit="guardarYMostrar(event)">
-            <label for="selectEvento">Seleccionar Evento Existente:</label>
-            <select id="selectEvento" required>
-                <option value="">Cargando eventos...</option>
-            </select>
+        <!-- SECCIÓN 1: REGISTRAR NUEVO EVENTO (AHORA ARRIBA) -->
+        <div class="seccion">
+            <h3>➕ Registrar Nuevo Evento</h3>
+            <form id="formNuevoEvento" onsubmit="crearNuevoEvento(event)">
+                <label for="nuevoNombre">Nombre de la Clase/Conferencia:</label>
+                <input type="text" id="nuevoNombre" placeholder="Ej. Arquitectura de Software" required>
+
+                <label for="nuevaClave">Clave Única:</label>
+                <input type="text" id="nuevaClave" placeholder="Ej. ARQ_2026" required>
+
+                <button type="submit" id="btnCrear" class="btn-secundario">Crear y Activar Evento</button>
+            </form>
+        </div>
+
+        <!-- SECCIÓN 2: GESTIÓN DEL EVENTO ACTUAL CON LOS 2 BOTONES -->
+        <div class="seccion" style="margin-bottom: 0;">
+            <h3>🚀 Evento Activo Actual</h3>
+            <div id="infoEventoActivo" class="evento-activo-box">Cargando evento activo...</div>
 
             <label for="inputDistancia">Distancia de Cobertura (Metros):</label>
-            <input type="number" id="inputDistancia" value="70" min="10" max="500" required>
+            <input type="number" id="inputDistancia" value="70" min="10" max="500">
+            <button onclick="actualizarDistancia()" class="btn-success" style="margin-top: 8px;">💾 Guardar Nueva Distancia</button>
 
-            <button type="submit" id="btnIniciar">🚀 Mostrar Evento y QR</button>
-        </form>
-
-        <!-- SECCIÓN 2: CREAR NUEVO EVENTO -->
-        <form id="formNuevoEvento" onsubmit="crearNuevoEvento(event)">
-            <h3>➕ O Registrar Nuevo Evento</h3>
-            
-            <label for="nuevoNombre">Nombre de la Clase/Conferencia:</label>
-            <input type="text" id="nuevoNombre" placeholder="Ej. Arquitectura de Software">
-
-            <label for="nuevaClave">Clave Única:</label>
-            <input type="text" id="nuevaClave" placeholder="Ej. ARQ_2026">
-
-            <button type="submit" id="btnCrear" class="btn-secundario">Crear Nuevo Evento</button>
-        </form>
+            <!-- DOS BOTONES PRINCIPALES -->
+            <button onclick="irAVerQR()" class="btn-warning" style="margin-top: 15px;">📷 Ver QR del Evento</button>
+            <button onclick="irAVerAsistentes()" class="btn-secundario" style="margin-top: 8px;">📋 Ver Asistentes</button>
+        </div>
 
         <div id="msgEstado" class="msg"></div>
     </div>
@@ -61,79 +69,32 @@
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBob2RybmZ6dnhvd3hoZXdoYmJxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MzM3MTcyNywiZXhwIjoyMTA4OTQ3NzI3fQ.usSIHWjncmGDNu6COe9Vo0kL3x_vsQfBGhDEqC7LJQg'; 
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        const selectEvento = document.getElementById('selectEvento');
+        const infoEventoActivo = document.getElementById('infoEventoActivo');
         const inputDistancia = document.getElementById('inputDistancia');
         const msgEstado = document.getElementById('msgEstado');
-        const btnIniciar = document.getElementById('btnIniciar');
-        const btnCrear = document.getElementById('btnCrear');
+        let eventoIdActual = null;
 
-        async function cargarEventos() {
+        async function cargarEventoActivo() {
             try {
                 const { data, error } = await supabaseClient
                     .from('eventos')
-                    .select('id, nombre, clave_evento, radio_metros, activo');
+                    .select('*')
+                    .eq('activo', true)
+                    .single();
 
-                if (error) throw error;
+                if (error || !data) {
+                    infoEventoActivo.textContent = "⚠️ No hay ningún evento activo";
+                    return;
+                }
 
-                selectEvento.innerHTML = '<option value="">-- Selecciona una clase o conferencia --</option>';
-                data.forEach(ev => {
-                    const option = document.createElement('option');
-                    option.value = ev.id;
-                    option.textContent = ev.nombre + ' (' + ev.clave_evento + ')';
-                    option.dataset.radio = ev.radio_metros || 70;
-                    if (ev.activo) option.selected = true;
-                    selectEvento.appendChild(option);
-                });
+                eventoIdActual = data.id;
+                infoEventoActivo.textContent = `${data.nombre} (${data.clave_evento})`;
+                inputDistancia.value = data.radio_metros || 70;
 
-                actualizarRadioSeleccionado();
             } catch (err) {
                 console.error(err);
                 msgEstado.className = "msg error";
-                msgEstado.textContent = "Error al cargar los eventos de Supabase.";
-            }
-        }
-
-        selectEvento.addEventListener('change', actualizarRadioSeleccionado);
-
-        function actualizarRadioSeleccionado() {
-            const selectedOption = selectEvento.options[selectEvento.selectedIndex];
-            if (selectedOption && selectedOption.dataset.radio) {
-                inputDistancia.value = selectedOption.dataset.radio;
-            }
-        }
-
-        async function guardarYMostrar(e) {
-            e.preventDefault();
-            const eventoId = selectEvento.value;
-            const nuevaDistancia = parseInt(inputDistancia.value);
-
-            if (!eventoId) return;
-
-            btnIniciar.disabled = true;
-            btnIniciar.textContent = "Configurando...";
-
-            try {
-                await supabaseClient.from('eventos').update({ activo: false }).neq('id', eventoId);
-                
-                const { error } = await supabaseClient
-                    .from('eventos')
-                    .update({ activo: true, radio_metros: nuevaDistancia })
-                    .eq('id', eventoId);
-
-                if (error) throw error;
-
-                msgEstado.className = "msg success";
-                msgEstado.textContent = "✅ Configuración guardada. Redirigiendo...";
-
-                setTimeout(() => {
-                    window.location.href = 'admin.html';
-                }, 800);
-
-            } catch (err) {
-                msgEstado.className = "msg error";
-                msgEstado.textContent = "Error al actualizar: " + err.message;
-                btnIniciar.disabled = false;
-                btnIniciar.textContent = "🚀 Mostrar Evento y QR";
+                msgEstado.textContent = "Error al conectar con la base de datos.";
             }
         }
 
@@ -141,24 +102,19 @@
             e.preventDefault();
             const nombre = document.getElementById('nuevoNombre').value.trim();
             const clave = document.getElementById('nuevaClave').value.trim().toUpperCase();
-
-            if (!nombre || !clave) {
-                msgEstado.className = "msg error";
-                msgEstado.textContent = "Completa los campos para crear el evento.";
-                return;
-            }
+            const btnCrear = document.getElementById('btnCrear');
 
             btnCrear.disabled = true;
-            btnCrear.textContent = "Creando...";
-            msgEstado.className = "msg";
-            msgEstado.textContent = "Guardando nuevo evento...";
+            btnCrear.textContent = "Creando y activando...";
 
             try {
-                const { data, error } = await supabaseClient
+                // Desactivar todos los eventos anteriores
+                await supabaseClient.from('eventos').update({ activo: false }).neq('id', 0);
+
+                // Crear el nuevo evento y dejarlo activo por defecto
+                const { error } = await supabaseClient
                     .from('eventos')
-                    .insert([{ nombre: nombre, clave_evento: clave, activo: false, radio_metros: 70 }])
-                    .select()
-                    .single();
+                    .insert([{ nombre: nombre, clave_evento: clave, activo: true, radio_metros: 70 }]);
 
                 if (error) {
                     if (error.code === '23505') throw new Error("La clave de evento ya existe.");
@@ -166,23 +122,59 @@
                 }
 
                 msgEstado.className = "msg success";
-                msgEstado.textContent = "¡Evento creado con éxito! Ya puedes seleccionarlo arriba.";
-                
+                msgEstado.textContent = "¡Evento creado y activado con éxito!";
                 document.getElementById('formNuevoEvento').reset();
-                btnCrear.disabled = false;
-                btnCrear.textContent = "Crear Nuevo Evento";
                 
-                await cargarEventos();
+                await cargarEventoActivo();
+                btnCrear.disabled = false;
+                btnCrear.textContent = "Crear y Activar Evento";
 
             } catch (err) {
                 msgEstado.className = "msg error";
                 msgEstado.textContent = "Error: " + err.message;
                 btnCrear.disabled = false;
-                btnCrear.textContent = "Crear Nuevo Evento";
+                btnCrear.textContent = "Crear y Activar Evento";
             }
         }
 
-        cargarEventos();
+        async function actualizarDistancia() {
+            if (!eventoIdActual) return;
+            const nuevaDistancia = parseInt(inputDistancia.value);
+
+            try {
+                const { error } = await supabaseClient
+                    .from('eventos')
+                    .update({ radio_metros: nuevaDistancia })
+                    .eq('id', eventoIdActual);
+
+                if (error) throw error;
+
+                msgEstado.className = "msg success";
+                msgEstado.textContent = "✅ Distancia actualizada correctamente.";
+            } catch (err) {
+                msgEstado.className = "msg error";
+                msgEstado.textContent = "Error al actualizar distancia.";
+            }
+        }
+
+        function irAVerQR() {
+            if (!eventoIdActual) {
+                alert("Primero debes crear o tener un evento activo.");
+                return;
+            }
+            window.location.href = 'admin.html';
+        }
+
+        function irAVerAsistentes() {
+            if (!eventoIdActual) {
+                alert("No hay un evento activo seleccionado.");
+                return;
+            }
+            // Te redirigirá a una vista de asistentes (puedes crear un archivo asistentes.html después)
+            window.location.href = 'asistentes.html';
+        }
+
+        cargarEventoActivo();
     </script>
 </body>
 </html>
