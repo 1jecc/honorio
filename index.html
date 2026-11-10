@@ -13,7 +13,7 @@
         label { display: block; margin-top: 10px; font-weight: bold; font-size: 0.85rem; color: #444; }
         input { width: 100%; padding: 10px; margin-top: 4px; box-sizing: border-box; border: 2px solid #dfe4ea; border-radius: 8px; font-size: 0.95rem; outline: none; }
         input:focus { border-color: #002b49; }
-        button { width: 100%; padding: 12px; margin-top: 12px; background: #002b49; color: white; border: none; border-radius: 8px; font-size: 0.95rem; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button { width: 100%; padding: 12px; margin-top: 10px; background: #002b49; color: white; border: none; border-radius: 8px; font-size: 0.95rem; font-weight: bold; cursor: pointer; transition: 0.2s; }
         button:hover { background: #003f6b; }
         .btn-secundario { background: #718093; }
         .btn-secundario:hover { background: #2f3640; }
@@ -21,11 +21,19 @@
         .btn-success:hover { background: #27ae60; }
         .btn-warning { background: #f39c12; }
         .btn-warning:hover { background: #d35400; }
+        .btn-info { background: #009432; }
+        .btn-info:hover { background: #006266; }
         .seccion { background: #f8f9fa; padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e9ecef; }
-        .evento-activo-box { font-size: 1rem; color: #2d3436; font-weight: bold; margin-bottom: 10px; text-align: center; background: #dfe6e9; padding: 10px; border-radius: 8px; }
+        .evento-activo-box { font-size: 1.05rem; color: #2d3436; font-weight: bold; margin-bottom: 10px; text-align: center; background: #dfe6e9; padding: 12px; border-radius: 8px; }
         .msg { text-align: center; margin-top: 10px; font-weight: bold; font-size: 0.85rem; }
         .error { color: #e74c3c; }
         .success { color: #2ecc71; }
+
+        /* ESTILOS DEL MODAL */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
+        .modal-content { background: white; padding: 25px; border-radius: 16px; max-width: 385px; width: 90%; color: #333; text-align: left; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .close { color: #aaa; float: right; font-size: 24px; font-weight: bold; cursor: pointer; }
+        .close:hover { color: black; }
     </style>
 </head>
 <body>
@@ -33,28 +41,20 @@
     <div class="container">
         <h1>⚙️ Panel de Control</h1>
         
-        <!-- SECCIÓN 1: REGISTRAR NUEVO EVENTO (AHORA ARRIBA) -->
-        <div class="seccion">
-            <h3>➕ Registrar Nuevo Evento</h3>
-            <form id="formNuevoEvento" onsubmit="crearNuevoEvento(event)">
-                <label for="nuevoNombre">Nombre de la Clase/Conferencia:</label>
-                <input type="text" id="nuevoNombre" placeholder="Ej. Arquitectura de Software" required>
+        <!-- BOTÓN SUPERIOR PARA ABRIR MODAL DE NUEVO EVENTO -->
+        <button onclick="abrirModalNuevo()" class="btn-secundario" style="margin-bottom: 15px;">➕ Registrar Nuevo Evento</button>
 
-                <label for="nuevaClave">Clave Única:</label>
-                <input type="text" id="nuevaClave" placeholder="Ej. ARQ_2026" required>
-
-                <button type="submit" id="btnCrear" class="btn-secundario">Crear y Activar Evento</button>
-            </form>
-        </div>
-
-        <!-- SECCIÓN 2: GESTIÓN DEL EVENTO ACTUAL CON LOS 2 BOTONES -->
+        <!-- SECCIÓN: EVENTO ACTIVO ACTUAL -->
         <div class="seccion" style="margin-bottom: 0;">
             <h3>🚀 Evento Activo Actual</h3>
             <div id="infoEventoActivo" class="evento-activo-box">Cargando evento activo...</div>
 
+            <!-- Botón para editar el evento activo actual -->
+            <button onclick="abrirModalEditar()" class="btn-info" style="margin-top: 0; margin-bottom: 12px;">✏️ Editar Nombre y Clave</button>
+
             <label for="inputDistancia">Distancia de Cobertura (Metros):</label>
             <input type="number" id="inputDistancia" value="70" min="10" max="500">
-            <button onclick="actualizarDistancia()" class="btn-success" style="margin-top: 8px;">💾 Guardar Nueva Distancia</button>
+            <button onclick="actualizarDistancia()" class="btn-success">💾 Guardar Nueva Distancia</button>
 
             <!-- DOS BOTONES PRINCIPALES -->
             <button onclick="irAVerQR()" class="btn-warning" style="margin-top: 15px;">📷 Ver QR del Evento</button>
@@ -62,6 +62,40 @@
         </div>
 
         <div id="msgEstado" class="msg"></div>
+    </div>
+
+    <!-- MODAL PARA NUEVO EVENTO -->
+    <div id="modalNuevo" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="cerrarModalNuevo()">&times;</span>
+            <h3>➕ Crear Nuevo Evento</h3>
+            <form id="formNuevoEvento" onsubmit="crearNuevoEvento(event)">
+                <label for="nuevoNombre">Nombre de la Clase/Conferencia:</label>
+                <input type="text" id="nuevoNombre" placeholder="Ej. Arquitectura de Software" required>
+
+                <label for="nuevaClave">Clave Única:</label>
+                <input type="text" id="nuevaClave" placeholder="Ej. ARQ_2026" required>
+
+                <button type="submit" id="btnCrear" class="btn-success">Crear y Activar Evento</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL PARA EDITAR EVENTO ACTIVO -->
+    <div id="modalEditar" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="cerrarModalEditar()">&times;</span>
+            <h3>✏️ Editar Evento Activo</h3>
+            <form id="formEditarEvento" onsubmit="guardarEdicionEvento(event)">
+                <label for="editNombre">Nombre del Evento:</label>
+                <input type="text" id="editNombre" required>
+
+                <label for="editClave">Clave Única:</label>
+                <input type="text" id="editClave" required>
+
+                <button type="submit" id="btnGuardarEdit" class="btn-success">Guardar Cambios</button>
+            </form>
+        </div>
     </div>
 
     <script>
@@ -72,7 +106,10 @@
         const infoEventoActivo = document.getElementById('infoEventoActivo');
         const inputDistancia = document.getElementById('inputDistancia');
         const msgEstado = document.getElementById('msgEstado');
+        
         let eventoIdActual = null;
+        let nombreActual = "";
+        let claveActual = "";
 
         async function cargarEventoActivo() {
             try {
@@ -88,6 +125,9 @@
                 }
 
                 eventoIdActual = data.id;
+                nombreActual = data.nombre;
+                claveActual = data.clave_evento;
+                
                 infoEventoActivo.textContent = `${data.nombre} (${data.clave_evento})`;
                 inputDistancia.value = data.radio_metros || 70;
 
@@ -98,6 +138,21 @@
             }
         }
 
+        // Controladores de Modales
+        function abrirModalNuevo() { document.getElementById('modalNuevo').style.display = 'flex'; }
+        function cerrarModalNuevo() { document.getElementById('modalNuevo').style.display = 'none'; }
+
+        function abrirModalEditar() {
+            if (!eventoIdActual) {
+                alert("No hay un evento activo para editar.");
+                return;
+            }
+            document.getElementById('editNombre').value = nombreActual;
+            document.getElementById('editClave').value = claveActual;
+            document.getElementById('modalEditar').style.display = 'flex';
+        }
+        function cerrarModalEditar() { document.getElementById('modalEditar').style.display = 'none'; }
+
         async function crearNuevoEvento(e) {
             e.preventDefault();
             const nombre = document.getElementById('nuevoNombre').value.trim();
@@ -105,13 +160,11 @@
             const btnCrear = document.getElementById('btnCrear');
 
             btnCrear.disabled = true;
-            btnCrear.textContent = "Creando y activando...";
+            btnCrear.textContent = "Creando...";
 
             try {
-                // Desactivar todos los eventos anteriores
                 await supabaseClient.from('eventos').update({ activo: false }).neq('id', 0);
 
-                // Crear el nuevo evento y dejarlo activo por defecto
                 const { error } = await supabaseClient
                     .from('eventos')
                     .insert([{ nombre: nombre, clave_evento: clave, activo: true, radio_metros: 70 }]);
@@ -121,19 +174,47 @@
                     throw error;
                 }
 
+                cerrarModalNuevo();
                 msgEstado.className = "msg success";
                 msgEstado.textContent = "¡Evento creado y activado con éxito!";
                 document.getElementById('formNuevoEvento').reset();
-                
                 await cargarEventoActivo();
-                btnCrear.disabled = false;
-                btnCrear.textContent = "Crear y Activar Evento";
 
             } catch (err) {
-                msgEstado.className = "msg error";
-                msgEstado.textContent = "Error: " + err.message;
+                alert("Error: " + err.message);
+            } finally {
                 btnCrear.disabled = false;
                 btnCrear.textContent = "Crear y Activar Evento";
+            }
+        }
+
+        async function guardarEdicionEvento(e) {
+            e.preventDefault();
+            const nuevoNombre = document.getElementById('editNombre').value.trim();
+            const nuevaClave = document.getElementById('editClave').value.trim().toUpperCase();
+            const btnGuardar = document.getElementById('btnGuardarEdit');
+
+            btnGuardar.disabled = true;
+            btnGuardar.textContent = "Guardando...";
+
+            try {
+                const { error } = await supabaseClient
+                    .from('eventos')
+                    .update({ nombre: nuevoNombre, clave_evento: nuevaClave })
+                    .eq('id', eventoIdActual);
+
+                if (error) throw error;
+
+                cerrarModalEditar();
+                msgEstado.className = "msg success";
+                msgEstado.textContent = "✅ Evento actualizado correctamente.";
+                await cargarEventoActivo();
+
+            } catch (err) {
+                alert("Error al actualizar: " + err.message);
+            } finally {
+                btnGuardar.disabled = false;
+                btnGuardar.textContent = "Guardar Cambios";
             }
         }
 
@@ -170,7 +251,6 @@
                 alert("No hay un evento activo seleccionado.");
                 return;
             }
-            // Te redirigirá a una vista de asistentes (puedes crear un archivo asistentes.html después)
             window.location.href = 'asistentes.html';
         }
 
