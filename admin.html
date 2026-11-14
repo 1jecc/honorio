@@ -125,9 +125,30 @@
             timeLeft = 15;
         }
 
+        async function procesarUbicacion(position) {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+
+            await supabaseClient
+                .from('eventos')
+                .update({ lat: lat, lon: lon })
+                .eq('id', eventoActualId);
+
+            msgGpsEl.textContent = ""; 
+            await actualizarQR();
+
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(async () => {
+                timeLeft--;
+                countdownEl.textContent = timeLeft;
+                if (timeLeft <= 0) {
+                    await actualizarQR();
+                }
+            }, 1000);
+        }
+
         async function iniciarSistema() {
             try {
-                // CORREGIDO: Evita el error 406 usando .limit(1) en lugar de .single()
                 const { data, error } = await supabaseClient
                     .from('eventos')
                     .select('*')
@@ -149,43 +170,50 @@
                     return;
                 }
 
-                navigator.geolocation.getCurrentPosition(async (position) => {
-                    const lat = position.coords.latitude;
-                    const lon = position.coords.longitude;
+                // OPTIMIZACIÓN: Verificamos si el navegador ya tiene el permiso memorizado
+                const gpsConcedido = localStorage.getItem('siase_gps_expositor');
 
-                    await supabaseClient
-                        .from('eventos')
-                        .update({ lat: lat, lon: lon })
-                        .eq('id', eventoActualId);
-
-                    msgGpsEl.textContent = ""; 
-                    await actualizarQR();
-
-                    if (timerInterval) clearInterval(timerInterval);
-                    timerInterval = setInterval(async () => {
-                        timeLeft--;
-                        countdownEl.textContent = timeLeft;
-                        if (timeLeft <= 0) {
-                            await actualizarQR();
-                        }
-                    }, 1000);
-
-                }, (error) => {
-                    msgGpsEl.textContent = "⚠️ Debes permitir el acceso a tu ubicación GPS.";
-                    // Aunque falle el GPS, carga el QR para que no se quede bloqueado
-                    actualizarQR();
-                    if (timerInterval) clearInterval(timerInterval);
-                    timerInterval = setInterval(async () => {
-                        timeLeft--;
-                        countdownEl.textContent = timeLeft;
-                        if (timeLeft <= 0) await actualizarQR();
-                    }, 1000);
-                }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+                if (gpsConcedido === 'true') {
+                    // Si ya fue autorizado antes, obtenemos la posición directo sin mostrar alertas repetitivas
+                    navigator.geolocation.getCurrentPosition(
+                        (position) => procesarUbicacion(position),
+                        (error) => {
+                            // Si falla, permitimos la ejecución del QR de todas formas
+                            actualizarQR();
+                            iniciarContadorReloj();
+                        },
+                        { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 }
+                    );
+                } else {
+                    // Primera vez: Solicitamos formalmente el permiso al navegador
+                    navigator.geolocation.getCurrentPosition(
+                        async (position) => {
+                            // Guardamos en memoria que el permiso fue otorgado con éxito
+                            localStorage.setItem('siase_gps_expositor', 'true');
+                            await procesarUbicacion(position);
+                        }, 
+                        (error) => {
+                            msgGpsEl.textContent = "⚠️ Debes permitir el acceso a tu ubicación GPS.";
+                            actualizarQR();
+                            iniciarContadorReloj();
+                        }, 
+                        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                    );
+                }
 
             } catch (err) {
                 console.error("Error general:", err);
                 nombreEventoEl.textContent = "❌ Error de conexión con la base de datos";
             }
+        }
+
+        function iniciarContadorReloj() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(async () => {
+                timeLeft--;
+                countdownEl.textContent = timeLeft;
+                if (timeLeft <= 0) await actualizarQR();
+            }, 1000);
         }
 
         iniciarSistema();
