@@ -12,7 +12,7 @@
         
         .top-actions { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 15px; flex-wrap: wrap; }
         input[type="text"], input[type="number"] { padding: 10px; border: 2px solid #dfe4ea; border-radius: 8px; font-size: 0.95rem; outline: none; }
-        input[type="text"]:focus { border-color: #002b49; }
+        input[type="text"]:focus, input[type="number"]:focus { border-color: #002b49; }
         
         .buscador { flex-grow: 1; max-width: 380px; }
         
@@ -89,6 +89,9 @@
 
                 <label for="nuevaClave">Clave Única:</label>
                 <input type="text" id="nuevaClave" placeholder="Ej. ARQ_2026" required>
+
+                <label for="nuevoRadio">Radio de Cobertura (Metros):</label>
+                <input type="number" id="nuevoRadio" value="70" min="10" max="500" required>
 
                 <button type="submit" id="btnCrear" class="btn-success" style="width: 100%; margin-top: 15px;">Crear y Activar Evento</button>
             </form>
@@ -182,12 +185,9 @@
             renderizarTabla(filtrados);
         }
 
-        // Activación correcta soportando UUIDs o strings como ID
         async function activarEvento(id) {
             try {
-                // Desactiva todos los eventos existentes de forma segura
                 await supabaseClient.from('eventos').update({ activo: false }).not('id', 'is', null);
-                // Activa el evento seleccionado usando su ID literal
                 const { error } = await supabaseClient.from('eventos').update({ activo: true }).eq('id', id);
                 if (error) throw error;
             } catch (err) {
@@ -215,6 +215,7 @@
             e.preventDefault();
             const nombre = document.getElementById('nuevoNombre').value.trim();
             const clave = document.getElementById('nuevaClave').value.trim().toUpperCase();
+            const radioMetros = parseInt(document.getElementById('nuevoRadio').value) || 70;
             const btnCrear = document.getElementById('btnCrear');
 
             btnCrear.disabled = true;
@@ -225,7 +226,12 @@
 
                 const { error } = await supabaseClient
                     .from('eventos')
-                    .insert([{ nombre: nombre, clave_evento: clave, activo: true, radio_metros: 70 }]);
+                    .insert([{ 
+                        nombre: nombre, 
+                        clave_evento: clave, 
+                        activo: true, 
+                        radio_metros: radioMetros 
+                    }]);
 
                 if (error) {
                     if (error.code === '23505') throw new Error("La clave de evento ya existe.");
@@ -234,6 +240,7 @@
 
                 cerrarModalNuevo();
                 document.getElementById('formNuevoEvento').reset();
+                document.getElementById('nuevoRadio').value = '70'; // Valor predeterminado
                 await cargarEventos();
 
             } catch (err) {
@@ -249,7 +256,7 @@
             const id = document.getElementById('editId').value;
             const nuevoNombre = document.getElementById('editNombre').value.trim();
             const nuevaClave = document.getElementById('editClave').value.trim().toUpperCase();
-            const nuevoRadio = parseInt(document.getElementById('editRadio').value);
+            const nuevoRadio = parseInt(document.getElementById('editRadio').value) || 70;
             const btnGuardar = document.getElementById('btnGuardarEdit');
 
             btnGuardar.disabled = true;
@@ -258,7 +265,11 @@
             try {
                 const { error } = await supabaseClient
                     .from('eventos')
-                    .update({ nombre: nuevoNombre, clave_evento: nuevaClave, radio_metros: nuevoRadio })
+                    .update({ 
+                        nombre: nuevoNombre, 
+                        clave_evento: nuevaClave, 
+                        radio_metros: nuevoRadio 
+                    })
                     .eq('id', id);
 
                 if (error) throw error;
